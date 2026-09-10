@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;650&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { font-family: Outfit, system-ui, sans-serif; color: #1D1D1B; background: #F4F6F9; font-synthesis: none; --surface: #FFFFFF; --canvas: #F4F6F9; --text-primary: #1D1D1B; --text-secondary: #526071; --border: #DDE3EC; }
+:root.dark { color: #F5F5F5; background: #171717; --surface: #222222; --canvas: #171717; --text-primary: #F5F5F5; --text-secondary: #B8B8B8; --border: #3A3A3A; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100dvh; background: var(--canvas); color: var(--text-primary); }
+button, input, textarea { font: inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid rgba(235, 170, 53, .78); outline-offset: 2px; }
+.tabular { font-variant-numeric: tabular-nums; }
+.markdown-content { color: var(--text-primary); line-height: 1.7; }
+.markdown-content p { margin: 0 0 .8rem; }
+.markdown-content p:last-child { margin-bottom: 0; }
+.markdown-content ul, .markdown-content ol { padding-left: 1.3rem; margin: .55rem 0; }
+.markdown-content table { width: 100%; border-collapse: collapse; margin: .8rem 0; font-size: .9rem; }
+.markdown-content th, .markdown-content td { border: 1px solid var(--border); padding: .5rem .65rem; text-align: left; }
+.markdown-content th { background: var(--canvas); font-weight: 600; }
+.markdown-content a { color: #5D9BD6; text-decoration: underline; }
+:root.dark .markdown-content a { color: #D0D0D0; }
+:root.dark .text-blue { color: #D0D0D0; }
+:root.dark .bg-navy { background-color: #1D1D1D; }
+:root.dark .bg-blue { background-color: #4A4A4A; }
+:root.dark .hover\:bg-navy:hover { background-color: #5A5A5A; }
+:root.dark .dark\:bg-slate-900 { background-color: #171717; }
+:root.dark .dark\:text-slate-100 { color: #F5F5F5; }
+:root.dark .dark\:text-slate-200 { color: #E5E5E5; }
+:root.dark .dark\:text-slate-300 { color: #C7C7C7; }
+:root.dark .dark\:text-slate-400 { color: #A3A3A3; }
+pre { overflow-x: auto; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

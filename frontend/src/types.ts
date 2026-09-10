@@ -1,0 +1,14 @@
+export type UserRole = 'admin' | 'collaborator'
+export type User = { id: string; email: string; name: string; role: UserRole; is_active: boolean; is_blacklisted: boolean; created_at: string }
+export type AdminUser = User
+export type ChatSummary = { id: string; title: string; created_at: string; updated_at: string }
+export type MessageRole = 'user' | 'assistant'
+export type HistoryMessage = { role: MessageRole; content: string }
+export type SourceCitation = { title: string; uri?: string | null; text?: string | null; pageNumber?: number | null }
+export type Message = { id: string; role: MessageRole; content: string; created_at: string; has_image: boolean; image_metadata?: Record<string, unknown> | null; imageUrl?: string | null; sources?: SourceCitation[] }
+export type ImageAttachment = { dataUrl: string; name: string; size: number; mime: 'image/png' | 'image/jpeg'; width?: number; height?: number }
+export type ApiError = { error?: { code?: string; message?: string; request_id?: string }; message?: string }
+export type AuthStatus = 'loading' | 'guest' | 'authenticated'
+export type DataStatus = 'loading' | 'ready' | 'error'
+export type TokenResponse = { access_token: string; token_type: 'bearer'; user: User }
+export type ChatQueryResponse = { sessionId: string; chatId: string | null; answer: string; messages: Message[]; sources: SourceCitation[] }
