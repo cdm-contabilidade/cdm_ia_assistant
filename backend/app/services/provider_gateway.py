@@ -19,8 +19,11 @@ class ProviderGateway:
         prompt: str,
         history: list[dict[str, str]],
         image: str | None = None,
+        images: list[str] | None = None,
         image_bytes: bytes | None = None,
         image_format: str | None = None,
+        image_bytes_list: list[bytes] | None = None,
+        image_formats: list[str] | None = None,
         enable_web_search: bool = False,
     ) -> AgnoAnswer:
         if provider == 'gemini':
@@ -28,8 +31,11 @@ class ProviderGateway:
                 prompt=prompt,
                 history=history,
                 image=image,
+                images=images,
                 image_bytes=image_bytes,
                 image_format=image_format,
+                image_bytes_list=image_bytes_list,
+                image_formats=image_formats,
                 model_id=model_id,
                 file_search_store_id=file_search_store_id,
                 use_legacy_knowledge_base=use_legacy_knowledge_base,
@@ -42,8 +48,11 @@ class ProviderGateway:
                 history=history,
                 model_id=model_id,
                 image=image,
+                images=images,
                 image_bytes=image_bytes,
                 image_format=image_format,
+                image_bytes_list=image_bytes_list,
+                image_formats=image_formats,
                 enable_web_search=enable_web_search,
             )
         raise AgnoError(400, 'unsupported_provider', 'Provedor de IA não suportado.')

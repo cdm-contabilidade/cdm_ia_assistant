@@ -1,9 +1,10 @@
 import asyncio
+import base64
 from types import SimpleNamespace
 
 import pytest
 
-from app.services.agno_client import AgnoAnswer, AgnoError, AgnoGeminiClient
+from app.services.agno_client import AgnoAnswer, AgnoError, AgnoGeminiClient, RAG_NOT_FOUND_MESSAGE
 
 
 class FakeAgent:
@@ -56,6 +57,46 @@ async def test_query_builds_prompt_and_normalizes_sources(monkeypatch):
     assert FakeAgent.run_kwargs['images'][0].content.startswith(b'\x89PNG')
     assert FakeGemini.kwargs['file_search_store_names'] == ['fileSearchStores/test-store']
 
+
+@pytest.mark.asyncio
+async def test_query_sends_gemini_images_in_order(monkeypatch):
+    monkeypatch.setattr('app.services.agno_client.Agent', FakeAgent)
+    monkeypatch.setattr('app.services.agno_client.Gemini', FakeGemini)
+    FakeAgent.run = SimpleNamespace(content='ok', citations=SimpleNamespace(raw={}))
+    images = [
+        'data:image/png;base64,' + base64.b64encode(b'\x89PNG\r\n\x1a\nfirst').decode(),
+        'data:image/png;base64,' + base64.b64encode(b'\x89PNG\r\n\x1a\nsecond').decode(),
+    ]
+
+    await AgnoGeminiClient().query(prompt='x', history=[], images=images)
+
+    assert [item.content for item in FakeAgent.run_kwargs['images']] == [
+        b'\x89PNG\r\n\x1a\nfirst',
+        b'\x89PNG\r\n\x1a\nsecond',
+    ]
+
+
+
+@pytest.mark.asyncio
+async def test_rag_without_grounding_refuses_to_complete_from_model_memory(monkeypatch):
+    monkeypatch.setattr('app.services.agno_client.Agent', FakeAgent)
+    monkeypatch.setattr('app.services.agno_client.Gemini', FakeGemini)
+    FakeAgent.run = SimpleNamespace(
+        content='Resposta inventada pelo modelo',
+        citations=SimpleNamespace(raw={'grounding_metadata': {'grounding_chunks': []}}),
+    )
+
+    result = await AgnoGeminiClient().query(
+        prompt='O que é o Comitê Gestor do IBS?',
+        history=[],
+        file_search_store_id='fileSearchStores/reforma',
+        use_legacy_knowledge_base=False,
+    )
+
+    assert result.text == RAG_NOT_FOUND_MESSAGE
+    assert result.sources == []
+    assert FakeGemini.kwargs['file_search_store_names'] == ['fileSearchStores/reforma']
+    assert 'exclusivamente o conteúdo recuperado' in FakeAgent.instance.kwargs['instructions'][0]
 
 @pytest.mark.asyncio
 async def test_query_maps_timeout_and_provider_errors(monkeypatch):

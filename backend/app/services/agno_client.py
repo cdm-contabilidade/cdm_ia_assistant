@@ -8,9 +8,16 @@ from agno.media import Image
 from agno.models.google import Gemini
 
 from app.core.config import get_settings
-from app.services.image_validation import decode_image
+from app.services.image_validation import decode_image, decode_images
 
 logger = logging.getLogger(__name__)
+RAG_NOT_FOUND_MESSAGE = 'Não encontrei essa informação na base de conhecimento selecionada.'
+RAG_INSTRUCTIONS = (
+    'Use exclusivamente o conteúdo recuperado do Store selecionado. Não use conhecimento '
+    'geral, memória do modelo, internet ou qualquer outra base. Se o conteúdo recuperado '
+    'não responder à pergunta, responda exatamente: '
+    f'{RAG_NOT_FOUND_MESSAGE}'
+)
 MAX_SOURCES = 20
 
 
@@ -76,16 +83,31 @@ class AgnoGeminiClient:
         prompt: str,
         history: list[dict[str, str]],
         image: str | None = None,
+        images: list[str] | None = None,
         image_bytes: bytes | None = None,
         image_format: str | None = None,
+        image_bytes_list: list[bytes] | None = None,
+        image_formats: list[str] | None = None,
         model_id: str | None = None,
         file_search_store_id: str | None = None,
         use_legacy_knowledge_base: bool = True,
     ) -> AgnoAnswer:
         settings = get_settings()
-        validated = decode_image(image) if image_bytes is None and image else None
-        if validated:
-            _, image_bytes, image_format = validated
+        if image_bytes_list:
+            decoded_images = list(zip(image_bytes_list, image_formats or []))
+            if len(decoded_images) != len(image_bytes_list):
+                decoded_images = [(content, image_formats[index] if image_formats and index < len(image_formats) else 'png')
+                                  for index, content in enumerate(image_bytes_list)]
+        elif image_bytes is not None:
+            decoded_images = [(image_bytes, image_format or 'png')]
+        elif images:
+            validated = decode_images(images)
+            decoded_images = validated[1] if validated else []
+        elif image:
+            validated = decode_image(image)
+            decoded_images = [(validated[1], validated[2])] if validated else []
+        else:
+            decoded_images = []
         request = _build_prompt(prompt, history)
         try:
             model = self.create_model(
@@ -93,14 +115,17 @@ class AgnoGeminiClient:
                 file_search_store_id=file_search_store_id,
                 use_legacy_knowledge_base=use_legacy_knowledge_base,
             )
+            selected_store_id = file_search_store_id or (
+                settings.google_file_search_store_name if use_legacy_knowledge_base else None
+            )
             agent = Agent(
                 model=model,
                 markdown=True,
-                instructions=['Responda com precisão usando exclusivamente o contexto recuperado quando ele existir.'],
+                instructions=[RAG_INSTRUCTIONS] if selected_store_id else [],
             )
             kwargs: dict[str, Any] = {}
-            if image_bytes:
-                kwargs['images'] = [Image(content=image_bytes, format=image_format or 'png')]
+            if decoded_images:
+                kwargs['images'] = [Image(content=content, format=image_format) for content, image_format in decoded_images]
             run = await asyncio.wait_for(agent.arun(request, **kwargs), timeout=settings.google_timeout_seconds)
         except AgnoError:
             raise
@@ -112,10 +137,13 @@ class AgnoGeminiClient:
             logger.warning('Gemini provider request failed', extra={'code': error.code})
             raise error from exc
 
+        sources = _extract_sources(run)
+        if selected_store_id and not sources:
+            return AgnoAnswer(text=RAG_NOT_FOUND_MESSAGE, sources=[])
         text = _run_text(run)
         if not text:
             raise AgnoError(502, 'google_provider_error', 'O serviço de resposta não retornou uma resposta válida.')
-        return AgnoAnswer(text=text, sources=_extract_sources(run))
+        return AgnoAnswer(text=text, sources=sources)
 
 
 def _build_prompt(prompt: str, history: list[dict[str, str]]) -> str:

@@ -14,6 +14,7 @@ from app.schemas import (
     AIModelCreate, AIModelPublic, AIModelUpdate, AdminUserUpdate, KnowledgeBaseCreate,
     KnowledgeBasePublic, KnowledgeBaseUpdate, RegisterRequest, UserPublic,
 )
+from app.services.knowledge_base import set_featured
 
 router = APIRouter(prefix='/api/admin', tags=['admin'])
 
@@ -161,7 +162,7 @@ async def delete_model(model_id: UUID, _: User = Depends(get_current_admin), db:
 
 @router.get('/knowledge-bases', response_model=list[KnowledgeBasePublic])
 async def list_knowledge_bases(_: User = Depends(get_current_admin), db: AsyncSession = Depends(get_db)) -> list[KnowledgeBase]:
-    result = await db.scalars(select(KnowledgeBase).order_by(KnowledgeBase.name.asc()))
+    result = await db.scalars(select(KnowledgeBase).order_by(KnowledgeBase.featured.desc(), KnowledgeBase.name.asc()))
     return list(result)
 
 
@@ -176,9 +177,11 @@ async def create_knowledge_base(
         provider=payload.provider,
         file_search_store_id=payload.file_search_store_id,
         active=payload.active,
+        featured=False,
     )
     db.add(knowledge_base)
     try:
+        await set_featured(db, knowledge_base, payload.featured)
         await db.commit()
         await db.refresh(knowledge_base)
     except IntegrityError as exc:
@@ -206,8 +209,10 @@ async def update_knowledge_base(
     if knowledge_base is None:
         raise missing_knowledge_base()
     changes = payload.model_dump(exclude_unset=True, by_alias=False)
+    requested_featured = changes.pop('featured', knowledge_base.featured)
     for key, value in changes.items():
         setattr(knowledge_base, key, value)
+    await set_featured(db, knowledge_base, requested_featured)
     knowledge_base.updated_at = datetime.now(timezone.utc)
     try:
         await db.commit()

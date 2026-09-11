@@ -63,12 +63,19 @@ class ChatQueryRequest(BaseModel):
     session_id: UUID = Field(alias='sessionId')
     chat_input: str = Field(alias='chatInput', min_length=1, max_length=10000)
     image: str | None = None
+    images: list[str] = Field(default_factory=list, max_length=4)
     chat_id: UUID | None = Field(default=None, alias='chatId')
     history: list[HistoryMessage] = Field(default_factory=list, max_length=20)
     model_id: UUID | None = Field(default=None, alias='modelId')
     knowledge_base_id: UUID | None = Field(default=None, alias='knowledgeBaseId')
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode='after')
+    def reject_mixed_image_fields(self):
+        if self.image is not None and self.images:
+            raise ValueError('image e images não podem ser enviados juntos')
+        return self
 
 
 class ChatQueryResponse(BaseModel):
@@ -165,6 +172,7 @@ class KnowledgeBaseCreate(BaseModel):
         serialization_alias='fileSearchStoreId', min_length=1, max_length=255,
     )
     active: bool = Field(default=True, validation_alias=AliasChoices('active', 'isActive', 'is_active'))
+    featured: bool = False
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -183,6 +191,12 @@ class KnowledgeBaseCreate(BaseModel):
             raise ValueError('file_search_store_id deve usar o formato fileSearchStores/<id>')
         return value
 
+    @model_validator(mode='after')
+    def normalize_inactive_featured(self):
+        if not self.active:
+            self.featured = False
+        return self
+
 
 class KnowledgeBaseUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
@@ -192,6 +206,7 @@ class KnowledgeBaseUpdate(BaseModel):
         serialization_alias='fileSearchStoreId', min_length=1, max_length=255,
     )
     active: bool | None = Field(default=None, validation_alias=AliasChoices('active', 'isActive', 'is_active'))
+    featured: bool | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -208,8 +223,14 @@ class KnowledgeBaseUpdate(BaseModel):
         return value
 
     @model_validator(mode='after')
+    def normalize_inactive_featured(self):
+        if self.active is False:
+            self.featured = False
+        return self
+
+    @model_validator(mode='after')
     def require_change(self):
-        if all(value is None for value in (self.name, self.provider, self.file_search_store_id, self.active)):
+        if all(value is None for value in (self.name, self.provider, self.file_search_store_id, self.active, self.featured)):
             raise ValueError('informe ao menos uma alteração')
         return self
 
@@ -250,6 +271,7 @@ class KnowledgeBasePublic(BaseModel):
     provider: Literal['gemini']
     file_search_store_id: str = Field(serialization_alias='fileSearchStoreId')
     active: bool
+    featured: bool
     store_id: str = Field(validation_alias='file_search_store_id', serialization_alias='store_id')
     is_active: bool = Field(validation_alias='active', serialization_alias='is_active')
     file_search_store_id_legacy: str = Field(validation_alias='file_search_store_id', serialization_alias='file_search_store_id')
@@ -265,3 +287,4 @@ class KnowledgeBaseCatalogPublic(BaseModel):
     name: str
     provider: Literal['gemini']
     active: bool
+    featured: bool

@@ -8,13 +8,13 @@ from sqlalchemy import select
 from app.core.auth import get_optional_user
 from app.core.config import get_settings
 from app.core.database import get_session_factory
+from app.core.guardrails import evaluate_guardrail
 from app.core.rate_limit import limiter
 from app.models import AIModel, Chat, KnowledgeBase, Message, User
 from app.schemas import ChatQueryRequest, ChatQueryResponse, MessagePublic, SourceCitation
 from app.services.agno_client import AgnoAnswer, AgnoError
-from app.services.image_validation import decode_image
+from app.services.image_validation import decode_images
 from app.services.provider_gateway import ProviderGateway
-from app.core.guardrails import evaluate_guardrail
 
 router = APIRouter(prefix='/api/chat', tags=['chat'])
 
@@ -52,14 +52,22 @@ def ephemeral_messages(
 ) -> list[MessagePublic]:
     now = datetime.now(timezone.utc)
     return [
-        MessagePublic(id=uuid4(), role='user', content=payload.chat_input.strip(), created_at=now, has_image=image_metadata is not None, image_metadata=image_metadata),
+        MessagePublic(
+            id=uuid4(),
+            role='user',
+            content=payload.chat_input.strip(),
+            created_at=now,
+            has_image=image_metadata is not None,
+            image_metadata=image_metadata,
+            metadata=provider_metadata,
+        ),
         MessagePublic(id=uuid4(), role='assistant', content=answer, created_at=now, has_image=False, metadata=provider_metadata),
     ]
 
 
 def chat_title_from_question(question: str) -> str:
     normalized_question = ' '.join(question.split())
-    return ' '.join(normalized_question.split()[:8])[:80][:255]
+    return ' '.join(normalized_question.split()[:8])[:80]
 
 
 def response_sources(sources) -> list[SourceCitation]:
@@ -72,11 +80,21 @@ def unavailable_model() -> HTTPException:
 
 def unavailable_knowledge_base() -> HTTPException:
     return HTTPException(status_code=404, detail={'code': 'knowledge_base_not_available', 'message': 'A base de conhecimento informada não existe ou está inativa.'})
+
+
+def knowledge_base_required() -> HTTPException:
+    return HTTPException(
+        status_code=400,
+        detail={
+            'code': 'knowledge_base_required',
+            'message': 'Selecione uma base de conhecimento para usar um modelo Gemini.',
+        },
+    )
+
+
 async def resolve_provider(
     model_id: UUID | None,
     knowledge_base_id: UUID | None,
-    *,
-    knowledge_base_was_provided: bool = False,
 ) -> ResolvedProvider:
     settings = get_settings()
     selected_model: AIModel | None = None
@@ -103,18 +121,16 @@ async def resolve_provider(
                 'message': 'Esta base de conhecimento só pode ser usada com um modelo Gemini.',
             },
         )
-    file_search_store_id = selected_knowledge_base.file_search_store_id if selected_knowledge_base else None
-    use_legacy_knowledge_base = not knowledge_base_was_provided
-    if provider == 'gemini' and file_search_store_id is None and use_legacy_knowledge_base:
-        file_search_store_id = settings.google_file_search_store_name
+    if provider == 'gemini' and selected_knowledge_base is None:
+        raise knowledge_base_required()
     return ResolvedProvider(
         provider=provider,
         model_id=resolved_model_id,
         model_display_name=selected_model.display_name if selected_model else None,
         knowledge_base_id=selected_knowledge_base.id if selected_knowledge_base else None,
         knowledge_base_name=selected_knowledge_base.name if selected_knowledge_base else None,
-        file_search_store_id=file_search_store_id,
-        use_legacy_knowledge_base=use_legacy_knowledge_base,
+        file_search_store_id=selected_knowledge_base.file_search_store_id if selected_knowledge_base else None,
+        use_legacy_knowledge_base=False,
     )
 
 
@@ -152,7 +168,17 @@ async def persist_authenticated_response(
             chat = Chat(id=target_chat_id, user_id=user_id, title=chat_title_from_question(cleaned_input), updated_at=now)
             db.add(chat)
             await db.flush()
-        user_message = Message(chat_id=chat.id, role='user', content=cleaned_input, created_at=now, has_image=image_metadata is not None, image_metadata=image_metadata)
+        elif chat.title == 'Nova Consulta' and await db.scalar(select(Message.id).where(Message.chat_id == chat.id).limit(1)) is None:
+            chat.title = chat_title_from_question(cleaned_input)
+        user_message = Message(
+            chat_id=chat.id,
+            role='user',
+            content=cleaned_input,
+            created_at=now,
+            has_image=image_metadata is not None,
+            image_metadata=image_metadata,
+            provider_metadata=provider_metadata,
+        )
         assistant_message = Message(
             chat_id=chat.id,
             role='assistant',
@@ -194,12 +220,22 @@ async def query(
     if not cleaned_input:
         raise HTTPException(status_code=422, detail={'code': 'empty_chat_input', 'message': 'A mensagem não pode ficar vazia.'})
     try:
-        validated_image = decode_image(payload.image)
+        image_values = [payload.image] if payload.image is not None else payload.images
+        validated_images = decode_images(image_values)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={'code': 'invalid_image', 'message': str(exc)}) from exc
-    image_metadata, image_bytes, image_format = validated_image or (None, None, None)
+    if validated_images:
+        image_metadata, decoded_images = validated_images
+        image_bytes_list = [item[0] for item in decoded_images]
+        image_formats = [item[1] for item in decoded_images]
+    else:
+        image_metadata = None
+        image_bytes_list = []
+        image_formats = []
+    image_bytes = image_bytes_list[0] if payload.image is not None and image_bytes_list else None
+    image_format = image_formats[0] if payload.image is not None and image_formats else None
     target_chat_id = payload.chat_id or payload.session_id
-    decision = evaluate_guardrail(cleaned_input)
+    decision = evaluate_guardrail(cleaned_input, scope_required=payload.knowledge_base_id is None)
     if not decision.allowed:
         answer = AgnoAnswer(text=decision.message or '', sources=[])
         provider_metadata = {'guardrail': decision.code or 'policy_refusal'}
@@ -226,11 +262,7 @@ async def query(
     history = [message.model_dump() for message in payload.history]
     if user_id is not None:
         history = await load_authenticated_history(target_chat_id, user_id)
-    resolved_provider = await resolve_provider(
-        payload.model_id,
-        payload.knowledge_base_id,
-        knowledge_base_was_provided='knowledge_base_id' in payload.model_fields_set,
-    )
+    resolved_provider = await resolve_provider(payload.model_id, payload.knowledge_base_id)
     try:
         answer = await ProviderGateway().query(
             provider=resolved_provider.provider,
@@ -241,8 +273,11 @@ async def query(
             prompt=cleaned_input,
             history=history,
             image=payload.image,
+            images=payload.images,
             image_bytes=image_bytes,
             image_format=image_format,
+            image_bytes_list=image_bytes_list,
+            image_formats=image_formats,
         )
     except AgnoError as exc:
         raise HTTPException(status_code=exc.status_code, detail={'code': exc.code, 'message': exc.message}) from exc

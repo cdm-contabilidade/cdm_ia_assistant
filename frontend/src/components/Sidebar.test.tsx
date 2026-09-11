@@ -14,7 +14,7 @@ vi.mock('../contexts/ChatContext', () => ({ useChat: mocks.useChat }))
 vi.mock('../services/api', () => ({ getApiError: mocks.getApiError }))
 
 const chat = { id: 'chat-1', title: 'Consulta fiscal', created_at: '2025-01-01', updated_at: '2025-01-01' }
-const rag = { id: 'rag-1', name: 'Reforma Tributária' }
+const rag = { id: 'rag-1', name: 'Reforma Tributária', featured: true }
 
 function renderSidebar(deleteChat = vi.fn(), role: 'admin' | 'collaborator' = 'collaborator', selectedRag = '') {
   const onNotify = vi.fn()
@@ -49,7 +49,7 @@ describe('Sidebar navigation', () => {
   it('selects a RAG from the sidebar', async () => {
     const user = userEvent.setup()
     const { setKnowledgeBaseId } = renderSidebar()
-    const ragButton = screen.getByRole('button', { name: 'Reforma Tributária' })
+    const ragButton = screen.getByRole('button', { name: /Reforma Tributária/ })
 
     expect(ragButton).toHaveAttribute('aria-pressed', 'false')
     await user.click(ragButton)

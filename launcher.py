@@ -40,9 +40,16 @@ def wait_until_ready(url: str, timeout: float = 30) -> bool:
     return False
 
 
+def create_server(port: int) -> Server:
+    # A --noconsole PyInstaller process has no stdout/stderr. Uvicorn's
+    # default formatter probes those streams with isatty() while configuring
+    # logging, so skip its console logging configuration in that environment.
+    return Server(Config(app=app, host='127.0.0.1', port=port, log_level='info', log_config=None))
+
+
 def main() -> None:
     port = find_port()
-    server = Server(Config(app=app, host='127.0.0.1', port=port, log_level='info'))
+    server = create_server(port)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
     url = f'http://127.0.0.1:{port}'

@@ -38,8 +38,11 @@ class OpenAIResponsesClient:
         history: list[dict[str, str]],
         model_id: str,
         image: str | None = None,
+        images: list[str] | None = None,
         image_bytes: bytes | None = None,
         image_format: str | None = None,
+        image_bytes_list: list[bytes] | None = None,
+        image_formats: list[str] | None = None,
         enable_web_search: bool = False,
     ) -> AgnoAnswer:
         settings = get_settings()
@@ -53,8 +56,9 @@ class OpenAIResponsesClient:
             for message in history[-20:]
         ]
         current_content: list[dict[str, Any]] = [{'type': 'input_text', 'text': prompt}]
-        if image:
-            current_content.append({'type': 'input_image', 'image_url': image})
+        image_values = images if images else ([image] if image else [])
+        for image_value in image_values:
+            current_content.append({'type': 'input_image', 'image_url': image_value})
         request_input.append({'role': 'user', 'content': current_content})
 
         request_kwargs: dict[str, Any] = {

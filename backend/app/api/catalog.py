@@ -20,7 +20,11 @@ async def active_models(_: User | None = Depends(get_optional_user), db: AsyncSe
 
 @router.get('/knowledge-bases', response_model=list[KnowledgeBaseCatalogPublic])
 async def active_knowledge_bases(_: User | None = Depends(get_optional_user), db: AsyncSession = Depends(get_db)) -> list[KnowledgeBase]:
-    result = await db.scalars(select(KnowledgeBase).where(KnowledgeBase.active.is_(True)).order_by(KnowledgeBase.name.asc()))
+    result = await db.scalars(
+        select(KnowledgeBase)
+        .where(KnowledgeBase.active.is_(True))
+        .order_by(KnowledgeBase.featured.desc(), KnowledgeBase.name.asc())
+    )
     return list(result)
 
 

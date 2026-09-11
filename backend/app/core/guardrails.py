@@ -105,6 +105,9 @@ _SCOPE_PATTERNS = tuple(re.compile(pattern) for pattern in (
     r'\bencargos? trabalhistas?\b',
     r'\bcnpj\b',
     r'\bmei\b',
+    r'\bibs\b',
+    r'\breforma tributaria\b',
+    r'\bcomite gestor\b',
     r'\brotinas? empresariais\b',
     r'\brotina financeira empresarial\b',
     r'\bfluxo de caixa empresarial\b',
@@ -120,6 +123,8 @@ _PERSONAL_ONLY_PATTERNS = tuple(re.compile(pattern) for pattern in (
     r'\bmeu credito\b',
     r'\bmeu debito\b',
     r'\bmeu imposto\b',
+    r'\bdeclar\w* imposto de renda\b',
+    r'\bimposto de renda pessoa fisica\b',
     r'\bscore de credito\b',
     r'\bcartao de credito\b',
 ))
@@ -146,10 +151,12 @@ def normalize_text(value: str) -> str:
     return re.sub(r'\s+', ' ', without_marks).strip().casefold()
 
 
-def evaluate_guardrail(question: str) -> GuardrailDecision:
+def evaluate_guardrail(question: str, *, scope_required: bool = True) -> GuardrailDecision:
     normalized = normalize_text(question)
     if any(pattern.search(normalized) for pattern in _SAFETY_PATTERNS):
         return _SAFETY_REFUSAL
-    if _is_personal_only(normalized) or not any(pattern.search(normalized) for pattern in _SCOPE_PATTERNS):
+    if scope_required and (_is_personal_only(normalized) or not any(
+        pattern.search(normalized) for pattern in _SCOPE_PATTERNS
+    )):
         return _SCOPE_REFUSAL
     return _ALLOWED

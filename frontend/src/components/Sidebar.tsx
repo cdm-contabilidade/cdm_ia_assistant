@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, CircleOff, Database, MessageSquare, MoreHorizontal, Plus, ShieldCheck, Trash2, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, CircleOff, Database, MessageSquare, MoreHorizontal, Plus, ShieldCheck, Star, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import logoWhite from '../../logo/logo_white.png'
 import { ConfirmDeleteModal } from './ConfirmDeleteModal'
@@ -19,6 +19,7 @@ export function Sidebar({ open, collapsed, onClose, onToggle, onAdmin, onNotify 
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const labelClass = collapsed ? 'md:hidden' : ''
+  const orderedKnowledgeBases = [...knowledgeBases].sort((left, right) => Number(right.featured === true) - Number(left.featured === true))
 
   useEffect(() => {
     if (!menuChatId) return
@@ -52,7 +53,7 @@ export function Sidebar({ open, collapsed, onClose, onToggle, onAdmin, onNotify 
         <div className={`sidebar-section-heading mb-2 flex items-center gap-2 px-1.5 ${labelClass}`}><Database size={14} className="text-white/55" /><p id="knowledge-bases-title" className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Bases de conhecimento</p></div>
         {catalogsLoading ? <p className={`px-2 py-2 text-sm text-white/55 ${labelClass}`}>Carregando bases...</p> : knowledgeBases.length === 0 ? <p className={`px-2 py-2 text-sm text-white/55 ${labelClass}`}>Nenhum RAG disponível.</p> : <div className="space-y-1">
           <button type="button" onClick={() => { setKnowledgeBaseId(''); onClose() }} className={`sidebar-knowledge-item flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-gold/70 ${knowledgeBaseId === '' ? 'is-active' : ''} ${collapsed ? 'md:justify-center md:px-1' : ''}`} aria-pressed={knowledgeBaseId === ''} title={collapsed ? 'Sem RAG' : undefined}><CircleOff size={15} className="shrink-0" /><span className={labelClass}>Sem RAG</span></button>
-          {knowledgeBases.map((knowledgeBase) => <button key={knowledgeBase.id} type="button" onClick={() => { setKnowledgeBaseId(knowledgeBase.id); onClose() }} className={`sidebar-knowledge-item flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-gold/70 ${knowledgeBaseId === knowledgeBase.id ? 'is-active' : ''} ${collapsed ? 'md:justify-center md:px-1' : ''}`} aria-pressed={knowledgeBaseId === knowledgeBase.id} title={collapsed ? knowledgeBase.name : undefined}><Database size={15} className="shrink-0" /><span className={`truncate ${labelClass}`}>{knowledgeBase.name}</span></button>)}
+          {orderedKnowledgeBases.map((knowledgeBase) => <button key={knowledgeBase.id} type="button" onClick={() => { setKnowledgeBaseId(knowledgeBase.id); onClose() }} className={`sidebar-knowledge-item flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-gold/70 ${knowledgeBaseId === knowledgeBase.id ? 'is-active' : ''} ${collapsed ? 'md:justify-center md:px-1' : ''}`} aria-pressed={knowledgeBaseId === knowledgeBase.id} title={collapsed ? knowledgeBase.name : undefined}><Database size={15} className="shrink-0" />{knowledgeBase.featured === true && <Star size={13} className="shrink-0 fill-gold text-gold" aria-label="RAG destacado" />}<span className={`truncate ${labelClass}`}>{knowledgeBase.name}</span></button>)}
         </div>}
       </section>
       <nav aria-label="Conversas" className={`sidebar-conversations min-h-0 flex-1 overflow-y-auto px-3 pb-3 ${collapsed ? 'md:px-2' : ''}`}><div className={`sidebar-section-heading mb-2 flex items-center gap-2 px-2 ${labelClass}`}><MessageSquare size={14} className="text-white/55" /><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Conversas</p></div>{chats.length === 0 && <p className={`px-2 py-4 text-sm text-white/55 ${labelClass}`}>Suas conversas aparecerão aqui.</p>}

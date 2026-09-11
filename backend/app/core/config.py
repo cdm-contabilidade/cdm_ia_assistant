@@ -1,12 +1,16 @@
 from functools import lru_cache
 from pathlib import Path
+import sys
 from urllib.parse import quote
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-ENV_FILE = Path(__file__).resolve().parents[2] / '.env'
+if getattr(sys, 'frozen', False) and getattr(sys, '_MEIPASS', None):
+    ENV_FILE = Path(getattr(sys, '_MEIPASS')) / 'backend' / '.env'
+else:
+    ENV_FILE = Path(__file__).resolve().parents[2] / '.env'
 
 
 class Settings(BaseSettings):

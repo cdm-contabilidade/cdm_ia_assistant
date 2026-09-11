@@ -62,7 +62,7 @@ export const adminApi = {
   updateAiModel: (id: string, payload: { provider?: string; name?: string; model_id?: string; is_active?: boolean }) => api.patch<AiModel>(`/api/admin/ai-models/${id}`, payload).then((r) => r.data),
   removeAiModel: (id: string) => api.delete(`/api/admin/ai-models/${id}`),
   createKnowledgeBase: (payload: { name: string; store_id: string }) => api.post<KnowledgeBase>('/api/admin/knowledge-bases', payload).then((r) => r.data),
-  updateKnowledgeBase: (id: string, payload: { name?: string; store_id?: string; is_active?: boolean }) => api.patch<KnowledgeBase>(`/api/admin/knowledge-bases/${id}`, payload).then((r) => r.data),
+  updateKnowledgeBase: (id: string, payload: { name?: string; store_id?: string; is_active?: boolean; featured?: boolean }) => api.patch<KnowledgeBase>(`/api/admin/knowledge-bases/${id}`, payload).then((r) => r.data),
   removeKnowledgeBase: (id: string) => api.delete(`/api/admin/knowledge-bases/${id}`),
 }
 
@@ -72,5 +72,5 @@ export const catalogsApi = {
 }
 
 export const chatApi = {
-  query: (payload: { sessionId: string; chatInput: string; image: string | null; chatId?: string | null; history?: HistoryMessage[]; modelId?: string; knowledgeBaseId?: string }) => api.post<ChatQueryResponse>('/api/chat/query', payload).then((r) => r.data),
+  query: (payload: { sessionId: string; chatInput: string; images: string[]; chatId?: string | null; history?: HistoryMessage[]; modelId?: string; knowledgeBaseId?: string }) => api.post<ChatQueryResponse>('/api/chat/query', payload).then((r) => r.data),
 }

@@ -60,10 +60,50 @@ async def test_admin_catalog_and_active_collaborator_catalog(client, admin_token
         'name': 'Documentos',
         'provider': 'gemini',
         'active': True,
+        'featured': False,
     }]
 
     deleted = await client.delete(f"/api/admin/models/{model.json()['id']}", headers=headers)
     assert deleted.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_featured_knowledge_base_is_exclusive_switchable_and_sorted(client, admin_token):
+    headers = {'Authorization': f'Bearer {admin_token}'}
+    inactive = await client.post('/api/admin/knowledge-bases', headers=headers, json={
+        'name': 'Z inativa', 'fileSearchStoreId': 'fileSearchStores/inactive', 'active': False, 'featured': True,
+    })
+    assert inactive.status_code == 201
+    assert inactive.json()['featured'] is False
+
+    first = await client.post('/api/admin/knowledge-bases', headers=headers, json={
+        'name': 'Z primeiro', 'fileSearchStoreId': 'fileSearchStores/first', 'featured': True,
+    })
+    second = await client.post('/api/admin/knowledge-bases', headers=headers, json={
+        'name': 'A segundo', 'fileSearchStoreId': 'fileSearchStores/second', 'featured': True,
+    })
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()['featured'] is True
+    assert second.json()['featured'] is True
+
+    listed = await client.get('/api/admin/knowledge-bases', headers=headers)
+    assert [item['name'] for item in listed.json()] == ['A segundo', 'Z inativa', 'Z primeiro']
+    assert [item['featured'] for item in listed.json()] == [True, False, False]
+
+    catalog_before_deactivation = await client.get('/api/catalog/knowledge-bases')
+    assert [item['name'] for item in catalog_before_deactivation.json()] == ['A segundo', 'Z primeiro']
+    assert [item['featured'] for item in catalog_before_deactivation.json()] == [True, False]
+
+    deactivated = await client.patch(
+        f"/api/admin/knowledge-bases/{second.json()['id']}", headers=headers, json={'active': False}
+    )
+    assert deactivated.status_code == 200
+    assert deactivated.json()['featured'] is False
+
+    catalog = await client.get('/api/catalog/knowledge-bases')
+    assert [item['name'] for item in catalog.json()] == ['Z primeiro']
+    assert catalog.json()[0]['featured'] is False
 
 
 @pytest.mark.asyncio
@@ -96,9 +136,10 @@ async def test_query_selects_active_records_and_persists_safe_metadata(client, c
     assert 'file_search_store_id' not in metadata
     assert 'api_key' not in str(metadata).lower()
     async with get_session_factory()() as db:
-        message = await db.scalar(select(Message).where(Message.role == 'assistant'))
-        assert message is not None
-        metadata = message.provider_metadata
+        messages = list(await db.scalars(select(Message).order_by(Message.created_at)))
+        assert len(messages) == 2
+        assert messages[0].provider_metadata == messages[1].provider_metadata
+        metadata = messages[0].provider_metadata
         assert metadata is not None
         assert metadata['knowledge_base_id'] == base.json()['id']
 
@@ -153,7 +194,7 @@ async def test_guest_query_can_select_active_model_and_google_rag(client, admin_
 
     monkeypatch.setattr(ProviderGateway, 'query', fake_query)
     response = await client.post('/api/chat/query', json={
-        'sessionId': str(uuid4()), 'chatInput': 'pergunta contábil guest',
+        'sessionId': str(uuid4()), 'chatInput': 'Qual é o conteúdo principal desta base?',
         'modelId': model.json()['id'], 'knowledgeBaseId': base.json()['id'],
     })
 
@@ -161,6 +202,7 @@ async def test_guest_query_can_select_active_model_and_google_rag(client, admin_
     assert response.json()['answer'] == 'ok guest'
     assert response.json()['modelId'] == model.json()['id']
     assert response.json()['knowledgeBaseId'] == base.json()['id']
+    assert response.json()['messages'][0]['metadata'] == response.json()['messages'][1]['metadata']
     assert captured['provider'] == 'gemini'
     assert captured['model_id'] == 'gemini-guest'
     assert captured['file_search_store_id'] == 'fileSearchStores/guest'
@@ -197,6 +239,34 @@ async def test_openai_responses_client_is_mocked_without_fallback(monkeypatch):
     assert 'tools' not in captured
     assert 'include' not in captured
     assert captured['closed'] is True
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_client_adds_one_input_image_per_item(monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), 'openai_api_key', 'test-only-openai-key')
+    captured = {}
+
+    class FakeResponses:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+            return type('Response', (), {'output_text': 'ok'})()
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = FakeResponses()
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr('app.services.openai_client.AsyncOpenAI', FakeOpenAI)
+    images = ['data:image/png;base64,one', 'data:image/jpeg;base64,two']
+    await OpenAIResponsesClient().query(prompt='pergunta', history=[], model_id='gpt-test', images=images)
+
+    content = captured['input'][-1]['content']
+    assert [item['type'] for item in content] == ['input_text', 'input_image', 'input_image']
+    assert [item['image_url'] for item in content[1:]] == images
 
 
 @pytest.mark.asyncio
@@ -375,6 +445,30 @@ async def test_openai_model_without_rag_enables_web_search(client, admin_token, 
     assert captured['model_id'] == 'gpt-test'
 
     assert response.json()['sources'] == []
+
+
+@pytest.mark.asyncio
+async def test_gemini_without_rag_is_rejected_before_provider(client, admin_token, monkeypatch):
+    model = await client.post('/api/admin/models', headers={'Authorization': f'Bearer {admin_token}'}, json={
+        'provider': 'gemini', 'displayName': 'Gemini sem RAG', 'modelId': 'gemini-no-rag',
+    })
+    called = False
+
+    async def fail_if_called(self, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError('provider não deveria ser chamado')
+
+    monkeypatch.setattr(ProviderGateway, 'query', fail_if_called)
+    response = await client.post('/api/chat/query', json={
+        'sessionId': str(uuid4()),
+        'chatInput': 'pergunta contábil sem base',
+        'modelId': model.json()['id'],
+    })
+
+    assert response.status_code == 400
+    assert response.json()['error']['code'] == 'knowledge_base_required'
+    assert called is False
 @pytest.mark.asyncio
 async def test_gemini_gateway_does_not_receive_web_search_option(monkeypatch):
     captured = {}
@@ -437,7 +531,11 @@ async def test_catalog_validation_rejects_secrets_and_invalid_store_ids(client, 
 
 
 @pytest.mark.asyncio
-async def test_explicit_null_knowledge_base_disables_legacy_store(client, collaborator_token, monkeypatch):
+async def test_explicit_null_knowledge_base_disables_legacy_store(client, collaborator_token, admin_token, monkeypatch):
+    model = await client.post('/api/admin/models', headers={'Authorization': f'Bearer {admin_token}'}, json={
+        'provider': 'openai', 'displayName': 'OpenAI sem RAG', 'modelId': 'gpt-no-rag',
+    })
+    assert model.status_code == 201
     captured = {}
 
     async def fake_query(self, **kwargs):
@@ -446,8 +544,10 @@ async def test_explicit_null_knowledge_base_disables_legacy_store(client, collab
 
     monkeypatch.setattr(ProviderGateway, 'query', fake_query)
     response = await client.post('/api/chat/query', headers={'Authorization': f'Bearer {collaborator_token}'}, json={
-        'sessionId': str(uuid4()), 'chatInput': 'pergunta sobre ICMS', 'knowledgeBaseId': None,
+        'sessionId': str(uuid4()), 'chatInput': 'pergunta sobre ICMS',
+        'modelId': model.json()['id'], 'knowledgeBaseId': None,
     })
     assert response.status_code == 200
     assert captured['file_search_store_id'] is None
     assert captured['use_legacy_knowledge_base'] is False
+    assert captured['enable_web_search'] is True

@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 FRONTEND = ROOT / 'frontend'
+BACKEND_ENV = ROOT / 'backend' / '.env'
 DIST = ROOT / 'dist'
 STAGE = ROOT / '.cdm-build'
 BACKUP = ROOT / '.dist.previous'
@@ -16,6 +17,8 @@ def run(command: list[str], cwd: Path) -> None:
 
 
 def build_bundle() -> Path:
+    if not BACKEND_ENV.is_file():
+        raise FileNotFoundError(f'Required configuration file not found: {BACKEND_ENV}')
     if STAGE.exists():
         shutil.rmtree(STAGE)
     STAGE.mkdir()
@@ -23,13 +26,14 @@ def build_bundle() -> Path:
     shutil.copytree(FRONTEND / 'dist', staged_assets)
     separator = ';' if sys.platform == 'win32' else ':'
     add_data = f'{staged_assets}{separator}dist'
+    env_add_data = f'{BACKEND_ENV}{separator}backend'
     pyinstaller_dist = STAGE / 'pyinstaller-dist'
     pyinstaller_work = STAGE / 'pyinstaller-work'
     run([
         sys.executable, '-m', 'PyInstaller', '--onefile', '--noconsole', '--clean',
         '--name', 'cdm-ai-assistant', '--paths', str(ROOT / 'backend'),
         '--distpath', str(pyinstaller_dist), '--workpath', str(pyinstaller_work),
-        '--specpath', str(STAGE), '--add-data', add_data, 'launcher.py',
+        '--specpath', str(STAGE), '--add-data', add_data, '--add-data', env_add_data, 'launcher.py',
     ], ROOT)
     bundle = STAGE / 'bundle'
     shutil.copytree(staged_assets, bundle)

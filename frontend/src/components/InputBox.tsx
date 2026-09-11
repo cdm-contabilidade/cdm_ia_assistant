@@ -3,12 +3,13 @@ import { useEffect, useRef, useState } from 'react'
 import type { AiModel, ImageAttachment, KnowledgeBase } from '../types'
 import { ImageUploader } from './ImageUploader'
 
-type Props = { disabled: boolean; catalogsLoading?: boolean; onSend: (text: string, image: ImageAttachment | null) => Promise<void>; aiModels?: AiModel[]; modelId?: string; knowledgeBaseId?: string; onModelChange?: (id: string) => void }
+type Props = { disabled: boolean; catalogsLoading?: boolean; onSend: (text: string, images: ImageAttachment[] | null) => Promise<void>; aiModels?: AiModel[]; modelId?: string; knowledgeBaseId?: string; onModelChange?: (id: string) => void }
 
 export function InputBox({ disabled, catalogsLoading = false, onSend, aiModels = [], modelId = '', knowledgeBaseId = '', onModelChange = () => {} }: Props) {
   const [text, setText] = useState('')
-  const [image, setImage] = useState<ImageAttachment | null>(null)
+  const [images, setImages] = useState<ImageAttachment[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const selectableModels = knowledgeBaseId ? aiModels : aiModels.filter((item) => item.provider.toLowerCase() === 'openai')
 
   useEffect(() => {
     const node = textareaRef.current
@@ -20,10 +21,10 @@ export function InputBox({ disabled, catalogsLoading = false, onSend, aiModels =
   async function send() {
     if (!text.trim() || disabled) return
     const currentText = text
-    const currentImage = image
+    const currentImages = images
     setText('')
-    setImage(null)
-    try { await onSend(currentText, currentImage) } catch { setText(currentText); setImage(currentImage) }
+    setImages([])
+    try { await onSend(currentText, currentImages.length ? currentImages : null) } catch { setText(currentText); setImages(currentImages) }
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -31,26 +32,29 @@ export function InputBox({ disabled, catalogsLoading = false, onSend, aiModels =
   }
 
   return (
-    <div className="rounded-container border border-border/90 bg-white/95 p-3 shadow-panel transition focus-within:border-blue/60 dark:border-dark-border dark:bg-dark-surface/95 sm:p-3.5">
-      <textarea ref={textareaRef} value={text} onChange={(event) => setText(event.target.value)} onKeyDown={onKeyDown} disabled={disabled} rows={1} maxLength={10000} placeholder="Digite sua dúvida contábil..." aria-label="Mensagem" className="max-h-36 min-h-10 w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[15px] leading-6 text-charcoal placeholder:text-secondary/70 focus:outline-none dark:text-slate-100 dark:placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60" />
+    <div className="rounded-container border border-border/90 bg-white/95 p-2.5 shadow-panel transition focus-within:border-blue/60 dark:border-dark-border dark:bg-dark-surface/95 sm:p-3">
+      <div className="grid min-w-0 gap-2.5 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] md:gap-3">
+        <textarea ref={textareaRef} value={text} onChange={(event) => setText(event.target.value)} onKeyDown={onKeyDown} disabled={disabled} rows={2} maxLength={10000} placeholder="Digite sua dúvida contábil..." aria-label="Mensagem" className="max-h-28 min-h-20 w-full resize-none border-0 bg-transparent px-1 py-1 text-[15px] leading-6 text-charcoal placeholder:text-secondary/70 focus:outline-none dark:text-slate-100 dark:placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60 md:min-h-24" />
 
-      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border/70 pt-2 dark:border-dark-border/70">
-        <ImageUploader value={image} onChange={setImage} disabled={disabled} />
-        <span className="hidden h-4 w-px bg-border sm:block dark:bg-dark-border" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <label className="min-w-0 text-[11px] font-medium text-secondary dark:text-slate-400">
+        <div className="flex min-w-0 flex-col gap-1.5 border-t border-border/70 pt-2.5 dark:border-dark-border/70 md:border-l md:border-t-0 md:pl-3 md:pt-0">
+          <div className="min-w-0">
+            <ImageUploader value={images} onChange={setImages} disabled={disabled} />
+          </div>
+          <div className="min-w-0">
+          <label className="block min-w-0 text-[11px] font-medium text-secondary dark:text-slate-400">
             Modelo
-            <select aria-label="Modelo" value={modelId} onChange={(event) => onModelChange(event.target.value)} disabled={catalogsLoading || !aiModels.length || Boolean(knowledgeBaseId)} aria-describedby="rag-help" className="mt-0.5 h-8 w-full min-w-0 rounded-control border border-border bg-transparent px-2 text-xs text-charcoal outline-none transition hover:border-blue/60 focus:border-blue focus:ring-2 focus:ring-blue/20 dark:border-dark-border dark:bg-slate-900 dark:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
-              <option value="">{knowledgeBaseId ? 'Gemini obrigatório com RAG' : aiModels.length ? 'Padrão do sistema' : 'Entre para escolher um modelo'}</option>
-              {aiModels.map((item) => <option key={item.id} value={item.id}>{item.displayName || item.name} · {item.provider}</option>)}
+            <select aria-label="Modelo" value={modelId} onChange={(event) => onModelChange(event.target.value)} disabled={catalogsLoading || !selectableModels.length || Boolean(knowledgeBaseId)} aria-describedby="rag-help" className="mt-0.5 h-8 w-full min-w-0 rounded-control border border-border bg-transparent px-2 text-xs text-charcoal outline-none transition hover:border-blue/60 focus:border-blue focus:ring-2 focus:ring-blue/20 dark:border-dark-border dark:bg-slate-900 dark:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
+              <option value="">{knowledgeBaseId ? 'Gemini obrigatório com RAG' : selectableModels.length ? 'OpenAI com pesquisa web' : 'Nenhum modelo OpenAI disponível'}</option>
+              {selectableModels.map((item) => <option key={item.id} value={item.id}>{item.displayName || item.name} · {item.provider}</option>)}
             </select>
           </label>
+          </div>
+          <button type="button" onClick={() => void send()} disabled={disabled || !text.trim()} className="inline-flex h-8 w-full shrink-0 items-center justify-center gap-1.5 rounded-control bg-wine px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-wine/90 focus:outline-none focus:ring-2 focus:ring-wine/40 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem">
+            <Send size={14} aria-hidden="true" /> Enviar
+          </button>
+          <p id="rag-help" className="pl-1 text-[10px] leading-4 text-secondary/75 dark:text-slate-400">{knowledgeBaseId ? 'RAG selecionado: a resposta usa somente o Store escolhido.' : 'Sem RAG: selecione um modelo OpenAI para pesquisar fontes atuais na web.'}</p>
         </div>
-        <button type="button" onClick={() => void send()} disabled={disabled || !text.trim()} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-control bg-wine px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-wine/90 focus:outline-none focus:ring-2 focus:ring-wine/40 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem">
-          <Send size={14} aria-hidden="true" /> <span className="hidden sm:inline">Enviar</span>
-        </button>
       </div>
-      <p id="rag-help" className="mt-1.5 pl-1 text-[10px] text-secondary/75 dark:text-slate-400">{knowledgeBaseId ? 'RAG selecionado na barra lateral. O modelo Gemini será usado.' : 'Selecione um RAG na barra lateral para consultar uma base.'}</p>
     </div>
   )
 }

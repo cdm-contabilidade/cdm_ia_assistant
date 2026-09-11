@@ -29,7 +29,17 @@ describe('chat surface behavior', () => {
 
     expect(screen.queryByRole('combobox', { name: 'RAG Google (opcional)' })).not.toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Modelo' })).toBeDisabled()
-    expect(screen.getByText('RAG selecionado na barra lateral. O modelo Gemini será usado.')).toBeInTheDocument()
+    expect(screen.getByText('RAG selecionado: a resposta usa somente o Store escolhido.')).toBeInTheDocument()
+  })
+
+  it('offers only OpenAI models without a selected RAG', () => {
+    render(<InputBox disabled={false} onSend={vi.fn().mockResolvedValue(undefined)} aiModels={[
+      { id: 'gemini-1', provider: 'gemini', name: 'Gemini' },
+      { id: 'openai-1', provider: 'openai', name: 'OpenAI' },
+    ]} />)
+
+    expect(screen.queryByRole('option', { name: /Gemini/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'OpenAI · openai' })).toBeInTheDocument()
   })
 
   it('renders grounded sources as accessible safe links', () => {
@@ -37,6 +47,18 @@ describe('chat surface behavior', () => {
     expect(screen.getByRole('heading', { name: 'Fontes consultadas' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Abrir fonte' })).toHaveAttribute('href', 'https://example.test/manual')
     expect(screen.getByText('Fonte insegura')).toBeInTheDocument()
+  })
+
+  it('copies assistant responses and does not show the action for user messages', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    render(<><MessageBubble message={{ id: 'assistant-1', role: 'assistant', content: 'Resposta para copiar', created_at: new Date().toISOString(), has_image: false }} /><MessageBubble message={{ id: 'user-1', role: 'user', content: 'Pergunta', created_at: new Date().toISOString(), has_image: false }} /></>)
+
+    await user.click(screen.getByRole('button', { name: 'Copiar resposta' }))
+    expect(writeText).toHaveBeenCalledWith('Resposta para copiar')
+    expect(screen.getByRole('button', { name: 'Resposta copiada' })).toHaveTextContent('Copiado')
+    expect(screen.queryByRole('button', { name: 'Copiar resposta' })).not.toBeInTheDocument()
   })
 
   it('renders the empty collaborator state', async () => {
