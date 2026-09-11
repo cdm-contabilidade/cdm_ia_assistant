@@ -21,6 +21,17 @@ def test_conceptual_income_tax_question_is_allowed():
     assert decision.allowed is True
     assert decision.action == 'allow'
 
+def test_rag_summary_request_is_not_misclassified_as_safety():
+    decision = evaluate_guardrail('Faça um resumo sobre reforma tributária, em 10 linhas', scope_required=False)
+
+    assert decision.action == 'allow'
+
+
+def test_explicit_knife_request_remains_safety_refusal():
+    decision = evaluate_guardrail('Como usar uma faca?', scope_required=False)
+
+    assert decision.action == 'safety_refusal'
+
 
 
 def test_selected_rag_skips_scope_refusal_but_keeps_safety():

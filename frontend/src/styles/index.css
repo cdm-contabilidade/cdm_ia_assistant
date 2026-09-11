@@ -63,4 +63,10 @@ pre { overflow-x: auto; }
 @media (max-width: 767px) { .sidebar-shell { box-shadow: 12px 0 32px rgba(5, 18, 44, .28); } }
 @media (max-width: 767px) { :root.dark .sidebar-shell { box-shadow: 12px 0 32px rgba(0, 0, 0, .38); } }
 @media (max-width: 767px) { .sidebar-brand > div > button:first-child { display: inline-flex; } }
+.thinking-dots { display: inline-flex; align-items: center; gap: .35rem; min-height: 1.25rem; }
+.thinking-dot { width: .45rem; height: .45rem; border-radius: 50%; background: #71211A; animation: thinking-dot-pulse 1.2s ease-in-out infinite; }
+.thinking-dot:nth-child(1) { animation-delay: -.8s; }
+.thinking-dot:nth-child(2) { animation-delay: -.4s; }
+@keyframes thinking-dot-pulse { 0%, 60%, 100% { opacity: .45; transform: scale(.7); } 30% { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .thinking-dot { animation: none; opacity: 1; transform: scale(.85); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

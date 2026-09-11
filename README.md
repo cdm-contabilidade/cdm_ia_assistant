@@ -39,6 +39,8 @@ python backend\scripts\seed_admin.py
 
 O administrador entra pelo mesmo login, acessa o chat e também o painel de administração. Colaboradores são criados pelo painel, podem ser ativados ou desativados, ter a senha trocada e ser colocados em blacklist. Contabilização de tokens ainda não faz parte do modelo.
 
+Para executar a versão empacotada, execute `iniciar.bat`. O batch abre `dist\cdm-ai-assistant.exe`; use `iniciar.bat --dev` somente para iniciar o ambiente de desenvolvimento com Vite e Uvicorn.
+
 ## Desenvolvimento
 
 Em um terminal:

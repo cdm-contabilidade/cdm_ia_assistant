@@ -4,6 +4,10 @@ import { useChat } from '../contexts/ChatContext'
 import { InputBox } from './InputBox'
 import { MessageBubble } from './MessageBubble'
 
+export function ThinkingIndicator() {
+  return <div className="flex justify-start" role="status" aria-label="O assistente está pensando"><div className="rounded-container border border-border bg-white px-5 py-4 shadow-sm dark:border-dark-border dark:bg-dark-surface"><span className="sr-only">O assistente está pensando</span><span className="thinking-dots" aria-hidden="true"><span className="thinking-dot" /><span className="thinking-dot" /><span className="thinking-dot" /></span></div></div>
+}
+
 export function ChatArea() {
   const { messages, status, error, isSending, catalogsLoading, sendMessage, aiModels, modelId, knowledgeBaseId, setModelId } = useChat()
   const endRef = useRef<HTMLDivElement>(null)
@@ -28,7 +32,7 @@ export function ChatArea() {
           {status === 'loading' && <div className="rounded-container border border-border bg-white p-4 text-center text-secondary dark:border-dark-border dark:bg-dark-surface dark:text-slate-300">Carregando conversas...</div>}
           {status === 'ready' && messages.length === 0 && <div className="flex min-h-[32vh] flex-col items-center justify-center text-center"><span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-wine text-white"><Bot size={28} /></span><h2 className="text-2xl font-semibold text-navy dark:text-slate-100">Como posso ajudar na sua contabilidade?</h2><p className="mt-2 max-w-md text-secondary dark:text-slate-300">Tire dúvidas sobre tributos, folha de pagamento, obrigações acessórias e rotinas contábeis. Você também pode anexar uma imagem para compartilhar mais contexto.</p></div>}
           {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
-          {isSending && <div className="rounded-container border border-border bg-white px-4 py-3 text-sm text-secondary dark:border-dark-border dark:bg-dark-surface dark:text-slate-300">{knowledgeBaseId ? 'Consultando a base de conhecimento...' : 'Pesquisando fontes atuais na web...'}</div>}
+          {isSending && <ThinkingIndicator />}
           {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-control border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-200"><span>{error}</span><button type="button" onClick={() => window.location.reload()} className="inline-flex items-center gap-1 font-medium underline transition hover:no-underline focus:outline-none focus:ring-2 focus:ring-red-500/50 active:scale-[.98]"><RefreshCw size={14} />Tentar novamente</button></div>}
           <div ref={endRef} />
         </div>

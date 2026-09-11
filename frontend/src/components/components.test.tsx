@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { AdminPanel } from './AdminPanel'
 import { InputBox } from './InputBox'
 import { MessageBubble } from './MessageBubble'
+import { ThinkingIndicator } from './ChatArea'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { adminApi } from '../services/api'
 
@@ -66,5 +67,12 @@ describe('chat surface behavior', () => {
     render(<AdminPanel onClose={vi.fn()} />)
     expect(await screen.findByText('Nenhum colaborador cadastrado.')).toBeInTheDocument()
     vi.restoreAllMocks()
+  })
+
+  it('shows the assistant thinking state with three animated dots', () => {
+    const { container } = render(<ThinkingIndicator />)
+
+    expect(screen.getByRole('status', { name: 'O assistente está pensando' })).toBeInTheDocument()
+    expect(container.querySelectorAll('.thinking-dot')).toHaveLength(3)
   })
 })

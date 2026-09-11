@@ -2,6 +2,22 @@
 setlocal
 
 set "ROOT=%~dp0"
+set "EXECUTABLE=%ROOT%dist\cdm-ai-assistant.exe"
+
+if /I "%~1"=="--dev" goto :development
+
+if exist "%EXECUTABLE%" (
+    start "CDM AI Assistant" "%EXECUTABLE%"
+    exit /b 0
+)
+
+echo [ERRO] Executavel nao encontrado em:
+echo        %EXECUTABLE%
+echo Execute build_executable.py ou use "iniciar.bat --dev".
+pause
+exit /b 1
+
+:development
 set "PYTHON=%ROOT%.venv\Scripts\python.exe"
 set "BACKEND=%ROOT%backend"
 set "FRONTEND=%ROOT%frontend"
@@ -71,7 +87,7 @@ ping 127.0.0.1 -n 4 >nul
 start "" http://localhost:5173
 
 echo.
-echo [OK] Projeto iniciado.
+echo [OK] Projeto iniciado em modo desenvolvimento.
 echo Frontend: http://localhost:5173
 echo API:      http://localhost:8000
 endlocal

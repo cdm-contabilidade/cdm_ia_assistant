@@ -94,7 +94,7 @@ async def test_guest_query_sends_history_and_does_not_persist(client, monkeypatc
     rag_id = await create_gemini_rag_record()
     single = await client.post('/api/chat/query', json={
         'sessionId': str(uuid4()),
-        'chatInput': 'pergunta com uma imagem',
+        'chatInput': 'Faça um resumo sobre reforma tributária, em 10 linhas',
         'knowledgeBaseId': str(rag_id),
         'images': [PNG],
     })

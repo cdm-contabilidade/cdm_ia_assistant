@@ -4,12 +4,12 @@ import unicodedata
 from typing import Literal
 
 SCOPE_MESSAGE = (
-    'Posso ajudar apenas com contabilidade, fiscal, tributário e rotinas financeiras '
-    'de empresas. Reformule sua pergunta dentro desse escopo.'
+    'Posso ajudar com questoes contabeis, fiscais, tributarias, societarias, '
+    'departamento pessoal e rotinas financeiras. Reformule sua pergunta dentro desse escopo.'
 )
 SAFETY_MESSAGE = (
-    'Não posso fornecer instruções perigosas. Afaste-se do risco e procure um serviço '
-    'de emergência local. No Brasil: SAMU 192, Polícia 190, Bombeiros 193 e CVV 188.'
+    'Nao posso fornecer instrucoes perigosas. Afaste-se do risco e procure um servico '
+    'de emergencia local. No Brasil: SAMU 192, Policia 190, Bombeiros 193 e CVV 188.'
 )
 
 
@@ -35,6 +35,7 @@ _SAFETY_REFUSAL = GuardrailDecision(
     message=SAFETY_MESSAGE,
 )
 
+# 1. Risco de vida, violencia e emergencias
 _SAFETY_PATTERNS = tuple(re.compile(pattern) for pattern in (
     r'\bsuicid\w*',
     r'\bautoagress\w*',
@@ -45,8 +46,7 @@ _SAFETY_PATTERNS = tuple(re.compile(pattern) for pattern in (
     r'\bferir alguem\b',
     r'\bmachucar alguem\b',
     r'\barmas?\b',
-    r'\bfaca\b',
-    r'\bfacas\b',
+    r'\bfacas?\b',
     r'\bfacao\b',
     r'\bpistola\b',
     r'\brifle\b',
@@ -68,22 +68,42 @@ _SAFETY_PATTERNS = tuple(re.compile(pattern) for pattern in (
     r'\bsangramento intenso\b',
 ))
 
+# 2. Termos estritamente alheios ao escopo contabil (bloqueia consumo/credito pessoal futil)
+_OFF_TOPIC_EXCLUSIONS = tuple(re.compile(pattern) for pattern in (
+    r'\bscore serasa\b',
+    r'\bscore de credito\b',
+    r'\blimite do cartao\b',
+    r'\baumentar limite\b',
+    r'\bfinanciamento de veiculo\b',
+    r'\bemprestimo pessoal\b',
+))
+
+# 3. Escopo contabil expandido (ASCII puro apos normalizacao)
 _SCOPE_PATTERNS = tuple(re.compile(pattern) for pattern in (
+    # Contabilidade pura e demonstracoes
     r'\bcontabil\w*',
-    r'\bfiscal\w*',
-    r'\bescritur\w*',
     r'\bbalanco\b',
     r'\bdre\b',
-    r'\bdemonstracao de resultado\b',
+    r'\bdva\b',
+    r'\bdfc\b',
+    r'\bdemonstrac\w*',
     r'\bativo\b',
     r'\bpassivo\b',
     r'\bpatrimonio liquido\b',
     r'\bdebito\b',
     r'\bcredito\b',
-    r'\bconciliacao bancaria\b',
-    r'\bconciliar conta\b',
-    r'\bimpost\w*',
+    r'\bplano de contas\b',
+    r'\blivro (?:razao|diario)\b',
+    r'\bfechamento\b',
+    r'\bregime de (?:caixa|competencia)\b',
+    r'\bamortizac\w*',
+    r'\bdepreciac\w*',
+
+    # Fiscal e Tributos
+    r'\bfiscal\w*',
     r'\btribut\w*',
+    r'\bimpost\w*',
+    r'\bretenc\w*',
     r'\bicms\b',
     r'\biss\b',
     r'\bipi\b',
@@ -92,60 +112,85 @@ _SCOPE_PATTERNS = tuple(re.compile(pattern) for pattern in (
     r'\birpj\b',
     r'\bcsll\b',
     r'\bsimples nacional\b',
-    r'\binss\b',
-    r'\bfgts\b',
-    r'\bobrigac\w* acessoria\w*',
-    r'\bsped\b',
+    r'\blucro (?:presumido|real|arbitrado)\b',
+    r'\bsubstituicao tributaria\b',
+    r'\bst\b',
+    r'\bdifal\b',
+    r'\bcfop\b',
+    r'\bncm\b',
     r'\bnotas? fiscais?\b',
-    r'\bnfe\b',
-    r'\bnfse\b',
+    r'\bnf-?e\b',
+    r'\bnfs-?e\b',
+    r'\bcte\b',
+    r'\bsped\b',
+    r'\befd\b',
+    r'\becf\b',
+    r'\bgia\b',
+    r'\bdefis\b',
+    r'\bpgdas\b',
+    r'\bdarf\b',
+    r'\bdas\b',
+    r'\bcnd\b',
+    r'\bparcelamento\b',
+    r'\biva\b',
+    r'\bibs\b',
+    r'\bcbs\b',
+    r'\breforma tributaria\b',
+
+    # Pessoa Fisica relevante para escritorios
+    r'\birpf\b',
+    r'\bdeclarac\w* (?:de )?imposto de renda\b',
+    r'\bcarne[- ]leao\b',
+    r'\bganho de capital\b',
+    r'\bmalha fina\b',
+    r'\brestituic\w*\b',
+
+    # Departamento Pessoal / Trabalhista
     r'\bfolha de pagamento\b',
     r'\bfolha salarial\b',
-    r'\bpro labore\b',
+    r'\bpro[- ]labore\b',
+    r'\bholerite\b',
+    r'\bcontracheque\b',
+    r'\bdecimo terceiro\b',
+    r'\b13[ºo]? salario\b',
+    r'\bferias\b',
+    r'\brescis\w*',
+    r'\baviso previo\b',
     r'\bencargos? trabalhistas?\b',
+    r'\binss\b',
+    r'\bfgts\b',
+    r'\besocial\b',
+    r'\bgfip\b',
+    r'\bgrrf\b',
+    r'\bclt\b',
+
+    # Societario e Cadastral
     r'\bcnpj\b',
+    r'\bcpf\b',
     r'\bmei\b',
-    r'\bibs\b',
-    r'\breforma tributaria\b',
-    r'\bcomite gestor\b',
-    r'\brotinas? empresariais\b',
-    r'\brotina financeira empresarial\b',
-    r'\bfluxo de caixa empresarial\b',
-    r'\bcontas? a pagar empresarial\b',
-    r'\bcontas? a receber empresarial\b',
-    r'\bfechamento mensal\b',
+    r'\bcnae\b',
+    r'\bjunta comercial\b',
+    r'\brfb\b',
+    r'\breceita federal\b',
+    r'\bcontrato social\b',
+    r'\balterac\w* contratual\b',
+    r'\bdistrato\b',
+    r'\babertura de empresa\b',
+    r'\bbaixa de empresa\b',
+    r'\binscric\w* (?:estadual|municipal)\b',
+
+    # Financeiro e Rotinas Operacionais (sem prefixo rigido)
+    r'\bfluxo de caixa\b',
+    r'\bcontas? a (?:pagar|receber)\b',
+    r'\bconciliac\w* bancaria\b',
+    r'\bextrato bancario\b',
+    r'\bfaturamento\b',
+    r'\breceita bruta\b',
 ))
-
-_PERSONAL_ONLY_PATTERNS = tuple(re.compile(pattern) for pattern in (
-    r'\bfinancas? pessoais?\b',
-    r'\bpessoa fisica\b',
-    r'\bcredito pessoal\b',
-    r'\bmeu credito\b',
-    r'\bmeu debito\b',
-    r'\bmeu imposto\b',
-    r'\bdeclar\w* imposto de renda\b',
-    r'\bimposto de renda pessoa fisica\b',
-    r'\bscore de credito\b',
-    r'\bcartao de credito\b',
-))
-
-_BUSINESS_CONTEXT_PATTERNS = tuple(re.compile(pattern) for pattern in (
-    r'\bempresa\w*',
-    r'\bempresarial\w*',
-    r'\bcnpj\b',
-    r'\bmei\b',
-    r'\bpessoa juridica\b',
-    r'\bpj\b',
-))
-
-
-def _is_personal_only(normalized: str) -> bool:
-    has_personal_marker = any(pattern.search(normalized) for pattern in _PERSONAL_ONLY_PATTERNS)
-    has_business_context = any(pattern.search(normalized) for pattern in _BUSINESS_CONTEXT_PATTERNS)
-    return has_personal_marker and not has_business_context
 
 
 def normalize_text(value: str) -> str:
+    """Normaliza o texto convertendo para ASCII simples, minusculo e sem espacos duplicados."""
     decomposed = unicodedata.normalize('NFKD', value)
     without_marks = ''.join(char for char in decomposed if not unicodedata.combining(char))
     return re.sub(r'\s+', ' ', without_marks).strip().casefold()
@@ -153,10 +198,18 @@ def normalize_text(value: str) -> str:
 
 def evaluate_guardrail(question: str, *, scope_required: bool = True) -> GuardrailDecision:
     normalized = normalize_text(question)
+
+    # 1. Filtro critico de seguranca
     if any(pattern.search(normalized) for pattern in _SAFETY_PATTERNS):
         return _SAFETY_REFUSAL
-    if scope_required and (_is_personal_only(normalized) or not any(
-        pattern.search(normalized) for pattern in _SCOPE_PATTERNS
-    )):
-        return _SCOPE_REFUSAL
+
+    if scope_required:
+        # 2. Bloqueia assuntos de consumo/credito pessoal futil
+        if any(pattern.search(normalized) for pattern in _OFF_TOPIC_EXCLUSIONS):
+            return _SCOPE_REFUSAL
+
+        # 3. Exige correspondencia com pelo menos um termo do ecossistema contabil
+        if not any(pattern.search(normalized) for pattern in _SCOPE_PATTERNS):
+            return _SCOPE_REFUSAL
+
     return _ALLOWED
