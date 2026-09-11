@@ -24,6 +24,13 @@ describe('chat surface behavior', () => {
     await user.keyboard('{Enter}')
     expect(onSend).toHaveBeenCalledWith('linha 1\nlinha 2', null)
   })
+  it('removes the chat RAG selector and locks the model when a sidebar RAG is active', () => {
+    render(<InputBox disabled={false} onSend={vi.fn().mockResolvedValue(undefined)} aiModels={[{ id: 'gemini-1', provider: 'gemini', name: 'Gemini' }]} modelId="" knowledgeBaseId="rag-1" />)
+
+    expect(screen.queryByRole('combobox', { name: 'RAG Google (opcional)' })).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Modelo' })).toBeDisabled()
+    expect(screen.getByText('RAG selecionado na barra lateral. O modelo Gemini será usado.')).toBeInTheDocument()
+  })
 
   it('renders grounded sources as accessible safe links', () => {
     render(<MessageBubble message={{ id: '1', role: 'assistant', content: 'Resposta', created_at: new Date().toISOString(), has_image: false, sources: [{ title: 'Manual CDM', uri: 'https://example.test/manual' }, { title: 'Fonte insegura', uri: 'javascript:alert(1)' }] }} />)

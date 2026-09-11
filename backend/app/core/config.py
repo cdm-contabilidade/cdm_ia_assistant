@@ -1,12 +1,16 @@
 from functools import lru_cache
+from pathlib import Path
 from urllib.parse import quote
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+ENV_FILE = Path(__file__).resolve().parents[2] / '.env'
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', case_sensitive=False, extra='ignore')
+    model_config = SettingsConfigDict(env_file=ENV_FILE, env_file_encoding='utf-8', case_sensitive=False, extra='ignore')
 
     database_url: str | None = None
     db_host: str = '127.0.0.1'
@@ -24,6 +28,8 @@ class Settings(BaseSettings):
     google_api_key: str = Field(min_length=1)
     google_file_search_store_name: str = Field(min_length=1)
     google_gemini_model: str = 'gemini-3.5-flash'
+    openai_api_key: str | None = None
+    openai_timeout_seconds: float = 90
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
     google_timeout_seconds: float = 90

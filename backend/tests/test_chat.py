@@ -8,6 +8,46 @@ from app.core.database import get_session_factory
 from app.core.rate_limit import limiter
 from app.models import Chat, Message, User
 from app.services.agno_client import AgnoAnswer, AgnoError, AgnoGeminiClient, SourceCitation
+from app.services.provider_gateway import ProviderGateway
+
+
+@pytest.mark.asyncio
+async def test_scope_refusal_skips_provider_and_returns_guardrail_metadata(client, monkeypatch):
+    async def fail_if_called(self, **kwargs):
+        raise AssertionError('provider não deveria ser chamado')
+
+    monkeypatch.setattr(ProviderGateway, 'query', fail_if_called)
+    response = await client.post('/api/chat/query', json={
+        'sessionId': str(uuid4()),
+        'chatInput': 'Como faço um programa em Python?',
+    })
+
+    assert response.status_code == 200
+    assert response.json()['sources'] == []
+    assert response.json()['messages'][1]['metadata']['guardrail'] == 'scope_refusal'
+
+
+@pytest.mark.asyncio
+async def test_safety_refusal_persists_authenticated_conversation_without_provider(
+    client, collaborator_token, monkeypatch
+):
+    async def fail_if_called(self, **kwargs):
+        raise AssertionError('provider não deveria ser chamado')
+
+    monkeypatch.setattr(ProviderGateway, 'query', fail_if_called)
+    response = await client.post(
+        '/api/chat/query',
+        headers={'Authorization': f'Bearer {collaborator_token}'},
+        json={'sessionId': str(uuid4()), 'chatInput': 'Estou em risco de morte iminente, como me matar?'},
+    )
+
+    assert response.status_code == 200
+    assert 'SAMU 192' in response.json()['answer']
+    assert response.json()['messages'][1]['metadata']['guardrail'] == 'safety_refusal'
+    async with get_session_factory()() as db:
+        messages = list(await db.scalars(select(Message).order_by(Message.created_at)))
+        assert len(messages) == 2
+        assert messages[1].provider_metadata['guardrail'] == 'safety_refusal'
 
 PNG = 'data:image/png;base64,' + base64.b64encode(b'\x89PNG\r\n\x1a\n' + b'\x00' * 32).decode()
 
@@ -27,7 +67,7 @@ async def test_guest_query_sends_history_and_does_not_persist(client, monkeypatc
     monkeypatch.setattr(AgnoGeminiClient, 'query', fake_query)
     response = await client.post('/api/chat/query', json={
         'sessionId': str(uuid4()),
-        'chatInput': 'dúvida guest',
+        'chatInput': 'dúvida de contabilidade guest',
         'history': [{'role': 'user', 'content': 'contexto'}],
     })
     assert response.status_code == 200
@@ -49,24 +89,70 @@ async def test_authenticated_query_uses_database_history_and_persists_image(clie
         return successful_answer('Resposta persistida')
 
     monkeypatch.setattr(AgnoGeminiClient, 'query', fake_query)
-    session_id = str(uuid4())
+    chat_id = uuid4()
+    session_id = str(chat_id)
     headers = {'Authorization': f'Bearer {collaborator_token}'}
-    first = await client.post('/api/chat/query', headers=headers, json={'sessionId': session_id, 'chatInput': 'primeira', 'image': PNG})
+    first = await client.post('/api/chat/query', headers=headers, json={'sessionId': session_id, 'chatInput': 'primeira dúvida contábil', 'image': PNG})
     assert first.status_code == 200
     second = await client.post('/api/chat/query', headers=headers, json={
         'sessionId': session_id,
         'chatId': session_id,
-        'chatInput': 'segunda',
+        'chatInput': 'segunda dúvida contábil',
         'history': [{'role': 'user', 'content': 'histórico adulterado'}],
     })
     assert second.status_code == 200
-    assert [item['content'] for item in calls[1]['history']] == ['primeira', 'Resposta persistida']
+    assert [item['content'] for item in calls[1]['history']] == ['primeira dúvida contábil', 'Resposta persistida']
     assert calls[0]['image_bytes'].startswith(b'\x89PNG')
     async with get_session_factory()() as db:
         messages = list(await db.scalars(select(Message).order_by(Message.created_at)))
         assert len(messages) == 4
         assert messages[0].has_image is True
+        assert messages[0].image_metadata is not None
         assert messages[0].image_metadata['mime'] == 'image/png'
+
+
+@pytest.mark.asyncio
+async def test_authenticated_query_creates_and_returns_short_title_without_overwriting_existing_chat(
+    client, collaborator_token, monkeypatch
+):
+    async def fake_query(self, **kwargs):
+        return successful_answer()
+
+    monkeypatch.setattr(AgnoGeminiClient, 'query', fake_query)
+    chat_id = uuid4()
+    session_id = str(chat_id)
+    headers = {'Authorization': f'Bearer {collaborator_token}'}
+    first = await client.post('/api/chat/query', headers=headers, json={
+        'sessionId': session_id,
+        'chatInput': '  Como   registrar a conciliação bancária agora para hoje e depois  ',
+    })
+
+    expected_title = 'Como registrar a conciliação bancária agora para hoje'
+    assert first.status_code == 200
+    assert first.json()['title'] == expected_title
+    async with get_session_factory()() as db:
+        chat = await db.scalar(select(Chat).where(Chat.id == chat_id))
+        assert chat is not None
+        assert chat.title == expected_title
+
+    renamed = await client.patch(
+        f'/api/chats/{session_id}',
+        headers=headers,
+        json={'title': 'Título escolhido manualmente'},
+    )
+    assert renamed.status_code == 200
+
+    second = await client.post('/api/chat/query', headers=headers, json={
+        'sessionId': session_id,
+        'chatId': session_id,
+        'chatInput': 'uma dúvida contábil posterior que não deve renomear',
+    })
+    assert second.status_code == 200
+    assert second.json()['title'] == 'Título escolhido manualmente'
+    async with get_session_factory()() as db:
+        chat = await db.scalar(select(Chat).where(Chat.id == chat_id))
+        assert chat is not None
+        assert chat.title == 'Título escolhido manualmente'
 
 
 @pytest.mark.asyncio
@@ -75,7 +161,7 @@ async def test_provider_failure_does_not_persist(client, collaborator_token, mon
         raise AgnoError(504, 'google_timeout', 'O serviço de resposta demorou além do limite.')
 
     monkeypatch.setattr(AgnoGeminiClient, 'query', failed_query)
-    response = await client.post('/api/chat/query', headers={'Authorization': f"Bearer {collaborator_token}"}, json={'sessionId': str(uuid4()), 'chatInput': 'x'})
+    response = await client.post('/api/chat/query', headers={'Authorization': f"Bearer {collaborator_token}"}, json={'sessionId': str(uuid4()), 'chatInput': 'falha contábil'})
     assert response.status_code == 504
     async with get_session_factory()() as db:
         assert await db.scalar(select(func.count()).select_from(Message)) == 0
@@ -87,13 +173,13 @@ async def test_invalid_image_and_rate_limit(client, monkeypatch):
         return successful_answer('ok')
 
     monkeypatch.setattr(AgnoGeminiClient, 'query', fake_query)
-    invalid = await client.post('/api/chat/query', json={'sessionId': str(uuid4()), 'chatInput': 'x', 'image': 'data:image/png;base64,not-valid'})
+    invalid = await client.post('/api/chat/query', json={'sessionId': str(uuid4()), 'chatInput': 'dúvida contábil', 'image': 'data:image/png;base64,not-valid'})
     assert invalid.status_code == 422
     from app.core.config import get_settings
     limiter._events.clear()
     get_settings().rate_limit_max_attempts = 1
-    first = await client.post('/api/chat/query', json={'sessionId': str(uuid4()), 'chatInput': 'x', 'image': None})
-    second = await client.post('/api/chat/query', json={'sessionId': str(uuid4()), 'chatInput': 'x', 'image': None})
+    first = await client.post('/api/chat/query', json={'sessionId': str(uuid4()), 'chatInput': 'teste contábil', 'image': None})
+    second = await client.post('/api/chat/query', json={'sessionId': str(uuid4()), 'chatInput': 'teste contábil', 'image': None})
     assert first.status_code == 200
     assert second.status_code == 429
     assert second.headers['X-RateLimit-Remaining'] == '0'

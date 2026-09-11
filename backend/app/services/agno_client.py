@@ -36,27 +36,39 @@ class AgnoError(Exception):
 
 
 class AgnoGeminiClient:
-    def create_model(self) -> Gemini:
+    def create_model(
+        self,
+        model_id: str | None = None,
+        file_search_store_id: str | None = None,
+        use_legacy_knowledge_base: bool = True,
+    ) -> Gemini:
         settings = get_settings()
+        selected_model_id = model_id or settings.google_gemini_model
+        selected_store_id = file_search_store_id
+        if selected_store_id is None and use_legacy_knowledge_base:
+            selected_store_id = settings.google_file_search_store_name
         common = {
-            'id': settings.google_gemini_model,
+            'id': selected_model_id,
             'api_key': settings.google_api_key,
-            'file_search_store_names': [settings.google_file_search_store_name],
             'timeout': settings.google_timeout_seconds,
         }
+        if selected_store_id is not None:
+            common['file_search_store_names'] = [selected_store_id]
         try:
             return Gemini(**common)
         except TypeError:
-            from google.genai.types import FileSearch, Tool
+            fallback: dict[str, Any] = {
+                'id': selected_model_id,
+                'api_key': settings.google_api_key,
+                'client_params': {'http_options': {'timeout': int(settings.google_timeout_seconds * 1000)}},
+            }
+            if selected_store_id is not None:
+                from google.genai.types import FileSearch, Tool
 
-            return Gemini(
-                id=settings.google_gemini_model,
-                api_key=settings.google_api_key,
-                generative_model_kwargs={
-                    'tools': [Tool(fileSearch=FileSearch(fileSearchStoreNames=[settings.google_file_search_store_name]))]
-                },
-                client_params={'http_options': {'timeout': int(settings.google_timeout_seconds * 1000)}},
-            )
+                fallback['generative_model_kwargs'] = {
+                    'tools': [Tool(fileSearch=FileSearch(fileSearchStoreNames=[selected_store_id]))]
+                }
+            return Gemini(**fallback)
 
     async def query(
         self,
@@ -66,6 +78,9 @@ class AgnoGeminiClient:
         image: str | None = None,
         image_bytes: bytes | None = None,
         image_format: str | None = None,
+        model_id: str | None = None,
+        file_search_store_id: str | None = None,
+        use_legacy_knowledge_base: bool = True,
     ) -> AgnoAnswer:
         settings = get_settings()
         validated = decode_image(image) if image_bytes is None and image else None
@@ -73,7 +88,11 @@ class AgnoGeminiClient:
             _, image_bytes, image_format = validated
         request = _build_prompt(prompt, history)
         try:
-            model = self.create_model()
+            model = self.create_model(
+                model_id=model_id,
+                file_search_store_id=file_search_store_id,
+                use_legacy_knowledge_base=use_legacy_knowledge_base,
+            )
             agent = Agent(
                 model=model,
                 markdown=True,

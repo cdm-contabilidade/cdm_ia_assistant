@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import admin, auth, chat, chats
+from app.api import admin, auth, catalog, chat, chats
 from app.core.config import get_settings
 from app.core.errors import error_body, register_error_handlers
 from fastapi.responses import JSONResponse
@@ -49,6 +49,8 @@ def create_app() -> FastAPI:
         return {'status': 'ok'}
 
     app.include_router(admin.router)
+    app.include_router(catalog.router)
+    app.include_router(catalog.compat_router)
     app.include_router(auth.router)
     app.include_router(chat.router)
     app.include_router(chats.router)

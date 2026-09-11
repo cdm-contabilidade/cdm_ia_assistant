@@ -20,7 +20,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 .markdown-content a { color: #5D9BD6; text-decoration: underline; }
 :root.dark .markdown-content a { color: #D0D0D0; }
 :root.dark .text-blue { color: #D0D0D0; }
-:root.dark .bg-navy { background-color: #1D1D1D; }
+:root.dark .bg-navy { background-color: #1A2C52; }
 :root.dark .bg-blue { background-color: #4A4A4A; }
 :root.dark .hover\:bg-navy:hover { background-color: #5A5A5A; }
 :root.dark .dark\:bg-slate-900 { background-color: #171717; }
@@ -29,4 +29,21 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 :root.dark .dark\:text-slate-300 { color: #C7C7C7; }
 :root.dark .dark\:text-slate-400 { color: #A3A3A3; }
 pre { overflow-x: auto; }
+.sidebar-shell { border-right: 1px solid rgba(255, 255, 255, .13); box-shadow: 8px 0 24px rgba(10, 31, 68, .16); }
+.sidebar-brand { border-bottom: 1px solid rgba(255, 255, 255, .13); }
+.sidebar-new-chat { box-shadow: 0 6px 16px rgba(113, 33, 26, .22); }
+.sidebar-section { background: rgba(7, 20, 49, .22); border: 1px solid rgba(255, 255, 255, .12); }
+.sidebar-section-heading { min-height: 20px; }
+.sidebar-knowledge-item, .sidebar-chat { position: relative; color: rgba(255, 255, 255, .72); }
+.sidebar-knowledge-item:hover, .sidebar-chat:hover { background: rgba(255, 255, 255, .085); color: #fff; }
+.sidebar-knowledge-item.is-active { background: rgba(255, 255, 255, .115); border: 1px solid rgba(255, 255, 255, .12); color: #fff; box-shadow: none; font-weight: 600; }
+.sidebar-knowledge-item.is-active::after { content: ''; width: 5px; height: 5px; flex: 0 0 5px; margin-left: auto; border-radius: 50%; background: #71211A; }
+.sidebar-chat { border: 1px solid transparent; }
+.sidebar-chat.is-active { background: rgba(255, 255, 255, .115); border-color: rgba(255, 255, 255, .12); color: #fff; }
+.sidebar-chat.is-active::before { content: ''; position: absolute; left: -1px; top: 7px; bottom: 7px; width: 3px; border-radius: 0 4px 4px 0; background: #C95A4B; }
+.sidebar-chat.is-active button:first-child { font-weight: 600; }
+.sidebar-conversations { border-top: 1px solid rgba(255, 255, 255, .13); padding-top: 16px; }
+.sidebar-conversations::-webkit-scrollbar { width: 6px; }
+.sidebar-conversations::-webkit-scrollbar-thumb { border-radius: 8px; background: rgba(255, 255, 255, .18); }
+@media (max-width: 767px) { .sidebar-shell { box-shadow: 12px 0 32px rgba(5, 18, 44, .28); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

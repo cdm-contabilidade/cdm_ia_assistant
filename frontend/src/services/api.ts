@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
-import type { AdminUser, ApiError, ChatQueryResponse, ChatSummary, HistoryMessage, Message, TokenResponse, User } from '../types'
+import type { AdminUser, AiModel, ApiError, ChatQueryResponse, ChatSummary, HistoryMessage, KnowledgeBase, Message, TokenResponse, User } from '../types'
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || ''
 export const api = axios.create({ baseURL, withCredentials: true, headers: { 'Content-Type': 'application/json' } })
@@ -58,8 +58,19 @@ export const adminApi = {
   users: () => api.get<AdminUser[]>('/api/admin/users').then((r) => r.data),
   createUser: (payload: { email: string; name: string; password: string }) => api.post<AdminUser>('/api/admin/users', payload).then((r) => r.data),
   updateUser: (userId: string, payload: { name?: string; password?: string; is_active?: boolean; is_blacklisted?: boolean }) => api.patch<AdminUser>(`/api/admin/users/${userId}`, payload).then((r) => r.data),
+  createAiModel: (payload: { provider: string; name: string; model_id: string }) => api.post<AiModel>('/api/admin/ai-models', payload).then((r) => r.data),
+  updateAiModel: (id: string, payload: { provider?: string; name?: string; model_id?: string; is_active?: boolean }) => api.patch<AiModel>(`/api/admin/ai-models/${id}`, payload).then((r) => r.data),
+  removeAiModel: (id: string) => api.delete(`/api/admin/ai-models/${id}`),
+  createKnowledgeBase: (payload: { name: string; store_id: string }) => api.post<KnowledgeBase>('/api/admin/knowledge-bases', payload).then((r) => r.data),
+  updateKnowledgeBase: (id: string, payload: { name?: string; store_id?: string; is_active?: boolean }) => api.patch<KnowledgeBase>(`/api/admin/knowledge-bases/${id}`, payload).then((r) => r.data),
+  removeKnowledgeBase: (id: string) => api.delete(`/api/admin/knowledge-bases/${id}`),
+}
+
+export const catalogsApi = {
+  aiModels: () => api.get<AiModel[]>('/api/ai-models').then((r) => r.data),
+  knowledgeBases: () => api.get<KnowledgeBase[]>('/api/knowledge-bases').then((r) => r.data),
 }
 
 export const chatApi = {
-  query: (payload: { sessionId: string; chatInput: string; image: string | null; chatId?: string | null; history?: HistoryMessage[] }) => api.post<ChatQueryResponse>('/api/chat/query', payload).then((r) => r.data),
+  query: (payload: { sessionId: string; chatInput: string; image: string | null; chatId?: string | null; history?: HistoryMessage[]; modelId?: string; knowledgeBaseId?: string }) => api.post<ChatQueryResponse>('/api/chat/query', payload).then((r) => r.data),
 }

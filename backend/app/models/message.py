@@ -23,5 +23,8 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     has_image: Mapped[bool] = mapped_column(default=False, nullable=False)
     image_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON().with_variant(JSONB, 'postgresql'), nullable=True)
+    # Provider/model identifiers are safe operational metadata; credentials are
+    # deliberately never accepted by the API or stored here.
+    provider_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON().with_variant(JSONB, 'postgresql'), nullable=True)
 
     chat: Mapped['Chat'] = relationship(back_populates='messages')

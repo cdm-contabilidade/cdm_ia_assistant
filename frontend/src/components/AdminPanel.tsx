@@ -2,6 +2,7 @@ import { ArrowLeft, RefreshCw, ShieldCheck, UserPlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { adminApi, getApiError } from '../services/api'
 import type { AdminUser } from '../types'
+import { CatalogPanel } from './CatalogPanel'
 
 type AdminPanelProps = { onClose: () => void }
 
@@ -58,6 +59,8 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
       </header>
 
       {error && <div role="alert" className="mt-5 flex items-center justify-between rounded-control border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200"><span>{error}</span><button type="button" onClick={() => void loadUsers()} className="inline-flex items-center gap-2 font-medium underline"><RefreshCw size={14} />Tentar novamente</button></div>}
+
+      <CatalogPanel />
 
       <section className="mt-6 rounded-container border border-border bg-white p-5 shadow-panel dark:border-dark-border dark:bg-dark-surface" aria-labelledby="new-collaborator-title">
         <div className="flex items-center gap-2"><UserPlus size={18} className="text-blue" /><h2 id="new-collaborator-title" className="text-lg font-semibold text-navy dark:text-slate-100">Novo colaborador</h2></div>
