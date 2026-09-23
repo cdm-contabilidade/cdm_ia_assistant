@@ -25,6 +25,7 @@ class ProviderGateway:
         image_bytes_list: list[bytes] | None = None,
         image_formats: list[str] | None = None,
         enable_web_search: bool = False,
+        api_key: str | None = None,
     ) -> AgnoAnswer:
         if provider == 'gemini':
             return await AgnoGeminiClient().query(
@@ -39,6 +40,7 @@ class ProviderGateway:
                 model_id=model_id,
                 file_search_store_id=file_search_store_id,
                 use_legacy_knowledge_base=use_legacy_knowledge_base,
+                api_key=api_key,
             )
         if provider == 'openai':
             if file_search_store_id is not None:
@@ -54,6 +56,7 @@ class ProviderGateway:
                 image_bytes_list=image_bytes_list,
                 image_formats=image_formats,
                 enable_web_search=enable_web_search,
+                api_key=api_key,
             )
         raise AgnoError(400, 'unsupported_provider', 'Provedor de IA não suportado.')
 

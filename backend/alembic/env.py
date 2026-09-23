@@ -4,7 +4,10 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.core.database import Base, get_database_url
-from app.models import AIModel, Chat, KnowledgeBase, Message, User
+from app.models import (
+    AIModel, Chat, Group, GroupMembership, GroupResourceGrant, KnowledgeBase, Message, ProviderCredential,
+    User, UserPermissionOverride,
+)
 
 config = context.config
 if config.config_file_name:

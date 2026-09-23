@@ -19,3 +19,4 @@ google-genai>=1.75,<2
 openai>=1.66,<2
 pytest>=8.3,<9
 pytest-asyncio>=0.24,<1
+cryptography>=42,<47

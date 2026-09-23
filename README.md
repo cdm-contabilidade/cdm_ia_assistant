@@ -62,6 +62,8 @@ Acesse `http://localhost:5173`. O Vite encaminha `/api` para `http://127.0.0.1:8
 ## Google Gemini File Search
 
 A API consulta o `GOOGLE_FILE_SEARCH_STORE_NAME` compartilhado usando Gemini e Agno. O store permanece na Google até exclusão manual; os arquivos brutos temporários da Files API expiram, mas o conteúdo indexado do store permanece.
+O `GOOGLE_API_KEY` configurado deve ter acesso aos Stores cadastrados. Um Store criado com outra chave ou em outro projeto retorna `403 PERMISSION_DENIED`; nesse caso, configure a chave proprietária ou recrie o Store e atualize `GOOGLE_FILE_SEARCH_STORE_NAME`/o cadastro da base.
+
 
 Para indexar ou substituir documentos explicitamente:
 

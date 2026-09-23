@@ -19,6 +19,18 @@ RAG_INSTRUCTIONS = (
     f'{RAG_NOT_FOUND_MESSAGE}'
 )
 MAX_SOURCES = 20
+GOOGLE_NOT_CONFIGURED_MESSAGE = 'O provedor Google Gemini não está configurado. Defina GOOGLE_API_KEY e tente novamente.'
+GOOGLE_MODEL_NOT_CONFIGURED_MESSAGE = 'Nenhum modelo Gemini ativo está disponível no catálogo. Cadastre e ative um modelo Gemini antes de tentar novamente.'
+GOOGLE_MODEL_NOT_FOUND_MESSAGE = 'O modelo Gemini informado não existe ou não está disponível para esta chave.'
+GOOGLE_API_KEY_INVALID_MESSAGE = 'A chave da API do Google Gemini é inválida ou não autorizada. Verifique GOOGLE_API_KEY.'
+GOOGLE_BILLING_MESSAGE = 'A conta Google Cloud precisa de faturamento ativo para usar este modelo. Verifique o projeto e o billing.'
+GOOGLE_QUOTA_MESSAGE = 'A cota do Google Gemini foi excedida. Verifique a cota, o plano e o billing antes de tentar novamente.'
+GOOGLE_RATE_LIMIT_MESSAGE = 'O Google Gemini recebeu requisições demais. Aguarde e tente novamente.'
+GOOGLE_INVALID_REQUEST_MESSAGE = 'O Google Gemini rejeitou a solicitação. Verifique o modelo e a base de conhecimento selecionados.'
+GOOGLE_FILE_SEARCH_STORE_FORBIDDEN_MESSAGE = (
+    'A chave do Google Gemini não tem acesso ao File Search Store selecionado ou o Store não existe. '
+    'Use a mesma chave que criou o Store ou recrie a base com a chave configurada.'
+)
 
 
 @dataclass(frozen=True)
@@ -48,15 +60,20 @@ class AgnoGeminiClient:
         model_id: str | None = None,
         file_search_store_id: str | None = None,
         use_legacy_knowledge_base: bool = True,
+        api_key: str | None = None,
     ) -> Gemini:
-        settings = get_settings()
-        selected_model_id = model_id or settings.google_gemini_model
+        settings = _gemini_settings()
+        selected_model_id = model_id
+        if not isinstance(selected_model_id, str) or not selected_model_id.strip():
+            raise AgnoError(503, 'google_model_not_configured', GOOGLE_MODEL_NOT_CONFIGURED_MESSAGE)
         selected_store_id = file_search_store_id
         if selected_store_id is None and use_legacy_knowledge_base:
             selected_store_id = settings.google_file_search_store_name
+        if not selected_store_id:
+            raise AgnoError(400, 'knowledge_base_required', 'Selecione uma base de conhecimento para usar um modelo Gemini.')
         common = {
             'id': selected_model_id,
-            'api_key': settings.google_api_key,
+            'api_key': _gemini_api_key(settings, api_key),
             'timeout': settings.google_timeout_seconds,
         }
         if selected_store_id is not None:
@@ -66,7 +83,7 @@ class AgnoGeminiClient:
         except TypeError:
             fallback: dict[str, Any] = {
                 'id': selected_model_id,
-                'api_key': settings.google_api_key,
+                'api_key': _gemini_api_key(settings, api_key),
                 'client_params': {'http_options': {'timeout': int(settings.google_timeout_seconds * 1000)}},
             }
             if selected_store_id is not None:
@@ -91,8 +108,14 @@ class AgnoGeminiClient:
         model_id: str | None = None,
         file_search_store_id: str | None = None,
         use_legacy_knowledge_base: bool = True,
+        api_key: str | None = None,
     ) -> AgnoAnswer:
-        settings = get_settings()
+        settings = _gemini_settings()
+        selected_store_id = file_search_store_id or (
+            settings.google_file_search_store_name if use_legacy_knowledge_base else None
+        )
+        if not selected_store_id:
+            raise AgnoError(400, 'knowledge_base_required', 'Selecione uma base de conhecimento para usar um modelo Gemini.')
         if image_bytes_list:
             decoded_images = list(zip(image_bytes_list, image_formats or []))
             if len(decoded_images) != len(image_bytes_list):
@@ -114,9 +137,7 @@ class AgnoGeminiClient:
                 model_id=model_id,
                 file_search_store_id=file_search_store_id,
                 use_legacy_knowledge_base=use_legacy_knowledge_base,
-            )
-            selected_store_id = file_search_store_id or (
-                settings.google_file_search_store_name if use_legacy_knowledge_base else None
+                api_key=api_key,
             )
             agent = Agent(
                 model=model,
@@ -133,7 +154,7 @@ class AgnoGeminiClient:
             logger.warning('Gemini request timed out')
             raise AgnoError(504, 'google_timeout', 'O serviço de resposta demorou além do limite.') from exc
         except Exception as exc:
-            error = _provider_error(exc)
+            error = _provider_error(exc, file_search_store_id=selected_store_id)
             logger.warning('Gemini provider request failed', extra={'code': error.code})
             raise error from exc
 
@@ -161,13 +182,99 @@ def _run_text(run: Any) -> str:
     return str(content).strip() if content is not None else ''
 
 
-def _provider_error(exc: Exception) -> AgnoError:
-    status = getattr(getattr(exc, 'response', None), 'status_code', None) or getattr(exc, 'status_code', None)
-    if status == 429 or 'rate' in exc.__class__.__name__.lower() or 'quota' in str(exc).lower():
-        return AgnoError(429, 'google_rate_limit', 'O serviço de resposta está temporariamente limitado.')
-    if 'timeout' in exc.__class__.__name__.lower():
+def _provider_error(exc: Exception, *, file_search_store_id: str | None = None) -> AgnoError:
+    status = _status_code(exc)
+    diagnostic = _diagnostic_text(exc)
+    if 'timeout' in diagnostic:
         return AgnoError(504, 'google_timeout', 'O serviço de resposta demorou além do limite.')
-    return AgnoError(502, 'google_provider_error', 'Não foi possível consultar o serviço de resposta.')
+    if _contains_any(diagnostic, 'quota', 'resource_exhausted', 'resource exhausted'):
+        return AgnoError(429, 'google_quota_exceeded', GOOGLE_QUOTA_MESSAGE)
+    if _contains_any(diagnostic, 'billing', 'billable', 'payment required', 'billing account', 'credit card') or status == 402:
+        return AgnoError(402, 'google_billing_required', GOOGLE_BILLING_MESSAGE)
+    if _contains_any(
+        diagnostic,
+        'api key not valid',
+        'invalid api key',
+        'invalid_api_key',
+        'apikey_invalid',
+        'api_key_invalid',
+        'unauthenticated',
+        'authentication failed',
+    ) or status == 401:
+        return AgnoError(401, 'google_api_key_invalid', GOOGLE_API_KEY_INVALID_MESSAGE)
+    if status == 429 or _contains_any(diagnostic, 'rate limit', 'ratelimit', 'too many requests'):
+        return AgnoError(429, 'google_rate_limit', GOOGLE_RATE_LIMIT_MESSAGE)
+    if (
+        _contains_any(
+            diagnostic,
+            'model not found',
+            'model_not_found',
+            'unsupported model',
+            'invalid model',
+            'unknown model',
+        )
+        or ('model' in diagnostic and _contains_any(diagnostic, 'does not exist', 'not found', 'not supported'))
+        or status == 404
+    ):
+        return AgnoError(400, 'google_model_not_found', GOOGLE_MODEL_NOT_FOUND_MESSAGE)
+    if status == 400:
+        return AgnoError(400, 'google_invalid_request', GOOGLE_INVALID_REQUEST_MESSAGE)
+    if status == 403 and file_search_store_id:
+        return AgnoError(403, 'google_file_search_store_forbidden', GOOGLE_FILE_SEARCH_STORE_FORBIDDEN_MESSAGE)
+    if status == 403 and _contains_any(
+        diagnostic,
+        'file search store',
+        'filesearchstore',
+        'file_search_store',
+        'permission to access the file',
+    ):
+        return AgnoError(403, 'google_file_search_store_forbidden', GOOGLE_FILE_SEARCH_STORE_FORBIDDEN_MESSAGE)
+    if status == 403 and _contains_any(diagnostic, 'permission', 'forbidden', 'access denied'):
+        return AgnoError(403, 'google_api_key_invalid', GOOGLE_API_KEY_INVALID_MESSAGE)
+    return AgnoError(502, 'google_provider_error', 'Não foi possível consultar o Google Gemini. Tente novamente ou verifique a configuração do provedor.')
+
+
+def _gemini_settings():
+    try:
+        settings = get_settings()
+    except Exception as exc:
+        raise AgnoError(503, 'google_not_configured', GOOGLE_NOT_CONFIGURED_MESSAGE) from exc
+    return settings
+
+
+def _gemini_api_key(settings, api_key: str | None) -> str:
+    selected = api_key if api_key is not None else getattr(settings, 'google_api_key', None)
+    if not isinstance(selected, str) or not selected.strip():
+        raise AgnoError(503, 'google_not_configured', GOOGLE_NOT_CONFIGURED_MESSAGE)
+    return selected.strip()
+
+
+def _status_code(exc: Exception) -> int | None:
+    response = getattr(exc, 'response', None)
+    status = getattr(response, 'status_code', None) or getattr(exc, 'status_code', None)
+    try:
+        return int(status) if status is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _diagnostic_text(exc: Exception) -> str:
+    values = [exc.__class__.__name__, str(exc)]
+    for attribute in ('message', 'status', 'code', 'response_json', 'body', 'details'):
+        value = getattr(exc, attribute, None)
+        if value is not None:
+            values.append(str(value))
+    response = getattr(exc, 'response', None)
+    if response is not None:
+        for attribute in ('text', 'reason', 'status', 'status_code'):
+            value = getattr(response, attribute, None)
+            if value is not None:
+                values.append(str(value))
+    return ' '.join(values).lower()
+
+
+def _contains_any(value: str, *needles: str) -> bool:
+    return any(needle in value for needle in needles)
 
 
 def _value(value: Any, name: str, default: Any = None) -> Any:

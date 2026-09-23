@@ -21,3 +21,5 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     chats: Mapped[list['Chat']] = relationship(back_populates='user', cascade='all, delete-orphan')
+    group_memberships: Mapped[list['GroupMembership']] = relationship(back_populates='user', cascade='all, delete-orphan')
+    permission_overrides: Mapped[list['UserPermissionOverride']] = relationship(back_populates='user', cascade='all, delete-orphan')

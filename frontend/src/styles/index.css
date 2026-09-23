@@ -10,12 +10,14 @@ body { margin: 0; min-width: 320px; min-height: 100dvh; background: var(--canvas
 button, input, textarea { font: inherit; }
 button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid rgba(235, 170, 53, .78); outline-offset: 2px; }
 .tabular { font-variant-numeric: tabular-nums; }
-.markdown-content { color: var(--text-primary); line-height: 1.7; }
+.markdown-content { min-width: 0; max-width: 100%; color: var(--text-primary); line-height: 1.7; }
 .markdown-content p { margin: 0 0 .8rem; }
 .markdown-content p:last-child { margin-bottom: 0; }
 .markdown-content ul, .markdown-content ol { padding-left: 1.3rem; margin: .55rem 0; }
-.markdown-content table { width: 100%; border-collapse: collapse; margin: .8rem 0; font-size: .9rem; }
-.markdown-content th, .markdown-content td { border: 1px solid var(--border); padding: .5rem .65rem; text-align: left; }
+.markdown-table-wrap { width: 100%; max-width: 100%; margin: .8rem 0; overflow-x: auto; overscroll-behavior-inline: contain; border: 1px solid var(--border); border-radius: 10px; }
+.markdown-table-wrap:focus-visible { outline: 3px solid rgba(235, 170, 53, .78); outline-offset: 2px; }
+.markdown-content table { width: max-content; min-width: 100%; border-collapse: collapse; margin: 0; font-size: .9rem; }
+.markdown-content th, .markdown-content td { border: 1px solid var(--border); padding: .5rem .65rem; text-align: left; overflow-wrap: anywhere; }
 .markdown-content th { background: var(--canvas); font-weight: 600; }
 .markdown-content a { color: #5D9BD6; text-decoration: underline; }
 :root.dark .markdown-content a { color: #D0D0D0; }
@@ -34,6 +36,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px
 :root.dark .dark\:text-slate-300 { color: #C7C7C7; }
 :root.dark .dark\:text-slate-400 { color: #A3A3A3; }
 pre { overflow-x: auto; }
+.chat-scroll-panel { overscroll-behavior-y: contain; }
 .sidebar-shell { border-right: 1px solid rgba(255, 255, 255, .13); box-shadow: 8px 0 24px rgba(10, 31, 68, .16); }
 .sidebar-brand { border-bottom: 1px solid rgba(255, 255, 255, .13); }
 .sidebar-brand > div > button:first-child { display: none; }

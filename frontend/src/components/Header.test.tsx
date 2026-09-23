@@ -14,34 +14,32 @@ vi.mock('../contexts/ThemeContext', () => ({ useTheme: mocks.useTheme }))
 const user = { id: 'user-1', name: 'Ana Souza', email: 'ana@example.com', role: 'collaborator' as const, is_active: true, is_blacklisted: false, created_at: '2025-01-01' }
 
 function renderHeader(overrides: { authenticated?: boolean } = {}) {
-  const onLogin = vi.fn()
   const toggleTheme = vi.fn()
   const logout = vi.fn()
   mocks.useAuth.mockReturnValue({ user: overrides.authenticated ? user : null, status: overrides.authenticated ? 'authenticated' : 'guest', logout })
   mocks.useTheme.mockReturnValue({ theme: 'light', toggleTheme })
-  render(<Header onMenu={vi.fn()} onLogin={onLogin} />)
-  return { logout, onLogin, toggleTheme }
+  render(<Header onMenu={vi.fn()} />)
+  return { logout, toggleTheme }
 }
 
 describe('Header', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('keeps the theme control in the fixed header and opens login for guests', async () => {
+  it('keeps the theme control in the fixed header without exposing a guest login trigger', async () => {
     const userEventSetup = userEvent.setup()
-    const { onLogin, toggleTheme } = renderHeader()
+    const { toggleTheme } = renderHeader()
     const header = screen.getByRole('banner')
 
     expect(header).toHaveClass('sticky', 'top-0')
     await userEventSetup.click(screen.getByRole('button', { name: 'Ativar tema escuro' }))
-    await userEventSetup.click(screen.getByRole('button', { name: 'Entrar' }))
 
     expect(toggleTheme).toHaveBeenCalledOnce()
-    expect(onLogin).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: 'Entrar' })).not.toBeInTheDocument()
   })
 
   it('shows the authenticated user and exposes logout beside the theme', async () => {
     const userEventSetup = userEvent.setup()
-    const { logout, onLogin } = renderHeader({ authenticated: true })
+    const { logout } = renderHeader({ authenticated: true })
 
     expect(screen.getByText('Ana Souza')).toBeInTheDocument()
     expect(screen.getByText('ana@example.com')).toBeInTheDocument()
@@ -49,6 +47,5 @@ describe('Header', () => {
     await userEventSetup.click(screen.getByRole('button', { name: 'Sair' }))
 
     expect(logout).toHaveBeenCalledOnce()
-    expect(onLogin).not.toHaveBeenCalled()
   })
 })

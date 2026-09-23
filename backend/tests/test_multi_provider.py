@@ -18,7 +18,7 @@ def test_openai_sdk_dependency_is_available():
     assert AsyncOpenAI is not None
 
 @pytest.mark.asyncio
-async def test_admin_catalog_and_active_collaborator_catalog(client, admin_token, collaborator_token):
+async def test_admin_catalog_and_active_collaborator_catalog(client, admin_token, collaborator_token, grant_collaborator_access):
     headers = {'Authorization': f'Bearer {admin_token}'}
     model = await client.post('/api/admin/models', headers=headers, json={
         'provider': 'openai', 'displayName': 'GPT', 'modelId': 'gpt-test', 'active': True,
@@ -33,6 +33,7 @@ async def test_admin_catalog_and_active_collaborator_catalog(client, admin_token
     })
     assert knowledge_base.status_code == 201
     assert knowledge_base.json()['fileSearchStoreId'] == 'fileSearchStores/docs'
+    await grant_collaborator_access([knowledge_base.json()['id']])
 
     catalog_headers = {'Authorization': f'Bearer {collaborator_token}'}
     models = await client.get('/api/catalog/models', headers=catalog_headers)
@@ -44,7 +45,7 @@ async def test_admin_catalog_and_active_collaborator_catalog(client, admin_token
     assert 'fileSearchStoreId' not in bases.json()[0]
     assert 'file_search_store_id' not in bases.json()[0]
     assert 'store_id' not in bases.json()[0]
-    guest_models = await client.get('/api/catalog/models')
+    guest_models = await client.get('/api/catalog/models', headers=catalog_headers)
     assert guest_models.status_code == 200
     assert guest_models.json()[0] == {
         'id': model.json()['id'],
@@ -53,7 +54,7 @@ async def test_admin_catalog_and_active_collaborator_catalog(client, admin_token
         'modelId': 'gpt-test',
         'active': True,
     }
-    guest_bases = await client.get('/api/catalog/knowledge-bases')
+    guest_bases = await client.get('/api/catalog/knowledge-bases', headers=catalog_headers)
     assert guest_bases.status_code == 200
     assert guest_bases.json() == [{
         'id': knowledge_base.json()['id'],
@@ -68,7 +69,7 @@ async def test_admin_catalog_and_active_collaborator_catalog(client, admin_token
 
 
 @pytest.mark.asyncio
-async def test_featured_knowledge_base_is_exclusive_switchable_and_sorted(client, admin_token):
+async def test_featured_knowledge_base_is_exclusive_switchable_and_sorted(client, admin_token, collaborator_token, grant_collaborator_access):
     headers = {'Authorization': f'Bearer {admin_token}'}
     inactive = await client.post('/api/admin/knowledge-bases', headers=headers, json={
         'name': 'Z inativa', 'fileSearchStoreId': 'fileSearchStores/inactive', 'active': False, 'featured': True,
@@ -86,12 +87,14 @@ async def test_featured_knowledge_base_is_exclusive_switchable_and_sorted(client
     assert second.status_code == 201
     assert first.json()['featured'] is True
     assert second.json()['featured'] is True
+    await grant_collaborator_access([first.json()['id'], second.json()['id']])
 
     listed = await client.get('/api/admin/knowledge-bases', headers=headers)
     assert [item['name'] for item in listed.json()] == ['A segundo', 'Z inativa', 'Z primeiro']
     assert [item['featured'] for item in listed.json()] == [True, False, False]
 
-    catalog_before_deactivation = await client.get('/api/catalog/knowledge-bases')
+    catalog_headers = {'Authorization': f'Bearer {collaborator_token}'}
+    catalog_before_deactivation = await client.get('/api/catalog/knowledge-bases', headers=catalog_headers)
     assert [item['name'] for item in catalog_before_deactivation.json()] == ['A segundo', 'Z primeiro']
     assert [item['featured'] for item in catalog_before_deactivation.json()] == [True, False]
 
@@ -101,13 +104,13 @@ async def test_featured_knowledge_base_is_exclusive_switchable_and_sorted(client
     assert deactivated.status_code == 200
     assert deactivated.json()['featured'] is False
 
-    catalog = await client.get('/api/catalog/knowledge-bases')
+    catalog = await client.get('/api/catalog/knowledge-bases', headers=catalog_headers)
     assert [item['name'] for item in catalog.json()] == ['Z primeiro']
     assert catalog.json()[0]['featured'] is False
 
 
 @pytest.mark.asyncio
-async def test_query_selects_active_records_and_persists_safe_metadata(client, collaborator_token, admin_token, monkeypatch):
+async def test_query_selects_active_records_and_persists_safe_metadata(client, collaborator_token, admin_token, grant_collaborator_access, monkeypatch):
     admin_headers = {'Authorization': f'Bearer {admin_token}'}
     model = await client.post('/api/admin/models', headers=admin_headers, json={
         'provider': 'gemini', 'displayName': 'Gemini personalizado', 'modelId': 'gemini-custom',
@@ -115,6 +118,7 @@ async def test_query_selects_active_records_and_persists_safe_metadata(client, c
     base = await client.post('/api/admin/knowledge-bases', headers=admin_headers, json={
         'name': 'Base customizada', 'fileSearchStoreId': 'fileSearchStores/custom',
     })
+    await grant_collaborator_access([base.json()['id']])
     captured = {}
 
     async def fake_query(self, **kwargs):
@@ -145,7 +149,7 @@ async def test_query_selects_active_records_and_persists_safe_metadata(client, c
 
 
 @pytest.mark.asyncio
-async def test_inactive_and_incompatible_selections_are_rejected(client, collaborator_token, admin_token, monkeypatch):
+async def test_inactive_and_incompatible_selections_are_rejected(client, collaborator_token, admin_token, grant_collaborator_access, monkeypatch):
     headers = {'Authorization': f'Bearer {admin_token}'}
     model = await client.post('/api/admin/models', headers=headers, json={
         'provider': 'openai', 'displayName': 'OpenAI', 'modelId': 'gpt-test',
@@ -153,6 +157,7 @@ async def test_inactive_and_incompatible_selections_are_rejected(client, collabo
     base = await client.post('/api/admin/knowledge-bases', headers=headers, json={
         'name': 'Gemini RAG', 'fileSearchStoreId': 'fileSearchStores/gemini',
     })
+    await grant_collaborator_access([base.json()['id']])
     called = False
 
     async def fake_query(self, **kwargs):
@@ -178,7 +183,7 @@ async def test_inactive_and_incompatible_selections_are_rejected(client, collabo
 
 
 @pytest.mark.asyncio
-async def test_guest_query_can_select_active_model_and_google_rag(client, admin_token, monkeypatch):
+async def test_authenticated_query_can_select_active_model_and_google_rag(client, admin_token, collaborator_token, grant_collaborator_access, monkeypatch):
     headers = {'Authorization': f'Bearer {admin_token}'}
     model = await client.post('/api/admin/models', headers=headers, json={
         'provider': 'gemini', 'displayName': 'Gemini guest', 'modelId': 'gemini-guest',
@@ -186,6 +191,7 @@ async def test_guest_query_can_select_active_model_and_google_rag(client, admin_
     base = await client.post('/api/admin/knowledge-bases', headers=headers, json={
         'name': 'RAG guest', 'fileSearchStoreId': 'fileSearchStores/guest',
     })
+    await grant_collaborator_access([base.json()['id']])
     captured = {}
 
     async def fake_query(self, **kwargs):
@@ -193,7 +199,7 @@ async def test_guest_query_can_select_active_model_and_google_rag(client, admin_
         return AgnoAnswer(text='ok guest', sources=[])
 
     monkeypatch.setattr(ProviderGateway, 'query', fake_query)
-    response = await client.post('/api/chat/query', json={
+    response = await client.post('/api/chat/query', headers={'Authorization': f'Bearer {collaborator_token}'}, json={
         'sessionId': str(uuid4()), 'chatInput': 'Qual é o conteúdo principal desta base?',
         'modelId': model.json()['id'], 'knowledgeBaseId': base.json()['id'],
     })
@@ -332,6 +338,84 @@ async def test_openai_rate_limit_preserves_code(monkeypatch):
         await OpenAIResponsesClient().query(prompt='pergunta', history=[], model_id='gpt-test')
 
     assert raised.value.code == 'openai_rate_limit'
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('body', 'expected_code', 'message_fragment'),
+    [
+        (
+            {'type': 'insufficient_quota', 'code': 'credit_balance_exhausted', 'message': 'credits exhausted'},
+            'openai_credit_balance_exhausted',
+            'créditos pré-pagos',
+        ),
+        (
+            {'type': 'insufficient_quota', 'code': 'organization_spend_limit_exceeded', 'message': 'spend limit reached'},
+            'openai_spend_limit_exceeded',
+            'limite de gasto',
+        ),
+        (
+            {'type': 'insufficient_quota', 'code': 'project_spend_limit_exceeded', 'message': 'spend limit reached'},
+            'openai_spend_limit_exceeded',
+            'limite de gasto',
+        ),
+        (
+            {'type': 'insufficient_quota', 'code': 'organization_usage_limit_exceeded', 'message': 'usage limit reached'},
+            'openai_usage_limit_exceeded',
+            'limite de uso',
+        ),
+        (
+            {'type': 'insufficient_quota', 'code': 'insufficient_quota', 'message': 'quota unavailable'},
+            'openai_quota_exceeded',
+            'cota da OpenAI',
+        ),
+        (
+            {'type': 'rate_limit_error', 'code': 'slow_down', 'message': 'slow down'},
+            'openai_rate_limit',
+            'temporariamente limitado',
+        ),
+        (
+            {'type': 'rate_limit_error', 'message': 'requests are temporarily limited'},
+            'openai_rate_limit',
+            'temporariamente limitado',
+        ),
+        (
+            {'message': 'requests are temporarily limited'},
+            'openai_rate_limit',
+            'temporariamente limitado',
+        ),
+    ],
+    ids=['credit', 'organization-spend', 'project-spend', 'organization-usage', 'quota', 'slow-down', 'rate-type', 'generic-429'],
+)
+async def test_openai_429_body_preserves_billing_diagnostics(monkeypatch, body, expected_code, message_fragment):
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), 'openai_api_key', 'test-only-openai-key')
+
+    class FakeAPIStatusError(Exception):
+        def __init__(self, error_body):
+            super().__init__('provider failure')
+            self.status_code = 429
+            self.body = error_body
+            self.request_id = 'req-test-123'
+
+    class FakeResponses:
+        async def create(self, **kwargs):
+            raise FakeAPIStatusError(body)
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = FakeResponses()
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr('app.services.openai_client.AsyncOpenAI', FakeOpenAI)
+    with pytest.raises(AgnoError) as raised:
+        await OpenAIResponsesClient().query(prompt='pergunta', history=[], model_id='gpt-test')
+
+    assert (raised.value.status_code, raised.value.code) == (429, expected_code)
+    assert message_fragment in raised.value.message
+
 @pytest.mark.asyncio
 async def test_openai_web_search_payload_and_dict_citations(monkeypatch):
     from app.core.config import get_settings
@@ -422,11 +506,12 @@ async def test_openai_object_citations_are_limited_to_twenty(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_openai_model_without_rag_enables_web_search(client, admin_token, monkeypatch):
+async def test_openai_model_without_rag_enables_web_search(client, admin_token, collaborator_token, grant_collaborator_access, monkeypatch):
     headers = {'Authorization': f'Bearer {admin_token}'}
     model = await client.post('/api/admin/models', headers=headers, json={
         'provider': 'openai', 'displayName': 'OpenAI', 'modelId': 'gpt-test',
     })
+    await grant_collaborator_access(web_search=True)
     captured = {}
 
     async def fake_query(self, **kwargs):
@@ -434,7 +519,7 @@ async def test_openai_model_without_rag_enables_web_search(client, admin_token, 
         return AgnoAnswer(text='resposta atual', sources=[])
 
     monkeypatch.setattr(OpenAIResponsesClient, 'query', fake_query)
-    response = await client.post('/api/chat/query', json={
+    response = await client.post('/api/chat/query', headers={'Authorization': f'Bearer {collaborator_token}'}, json={
         'sessionId': str(uuid4()),
         'chatInput': 'Qual o prazo atual do ICMS para uma empresa?',
         'modelId': model.json()['id'],
@@ -448,7 +533,7 @@ async def test_openai_model_without_rag_enables_web_search(client, admin_token, 
 
 
 @pytest.mark.asyncio
-async def test_gemini_without_rag_is_rejected_before_provider(client, admin_token, monkeypatch):
+async def test_gemini_without_rag_is_rejected_before_provider(client, admin_token, collaborator_token, monkeypatch):
     model = await client.post('/api/admin/models', headers={'Authorization': f'Bearer {admin_token}'}, json={
         'provider': 'gemini', 'displayName': 'Gemini sem RAG', 'modelId': 'gemini-no-rag',
     })
@@ -460,7 +545,7 @@ async def test_gemini_without_rag_is_rejected_before_provider(client, admin_toke
         raise AssertionError('provider não deveria ser chamado')
 
     monkeypatch.setattr(ProviderGateway, 'query', fail_if_called)
-    response = await client.post('/api/chat/query', json={
+    response = await client.post('/api/chat/query', headers={'Authorization': f'Bearer {collaborator_token}'}, json={
         'sessionId': str(uuid4()),
         'chatInput': 'pergunta contábil sem base',
         'modelId': model.json()['id'],
@@ -490,9 +575,32 @@ async def test_gemini_gateway_does_not_receive_web_search_option(monkeypatch):
     assert 'enable_web_search' not in captured
 
 
+@pytest.mark.asyncio
+async def test_gemini_failure_does_not_fallback_to_openai(monkeypatch):
+    async def gemini_failure(self, **kwargs):
+        raise AgnoError(429, 'google_rate_limit', 'O Google Gemini recebeu requisições demais. Aguarde e tente novamente.')
+
+    async def openai_must_not_be_called(self, **kwargs):
+        raise AssertionError('falha do Gemini não pode usar fallback para OpenAI')
+
+    monkeypatch.setattr(AgnoGeminiClient, 'query', gemini_failure)
+    monkeypatch.setattr(OpenAIResponsesClient, 'query', openai_must_not_be_called)
+
+    with pytest.raises(AgnoError) as raised:
+        await ProviderGateway().query(
+            provider='gemini',
+            model_id='gemini-test',
+            file_search_store_id='fileSearchStores/test',
+            prompt='pergunta',
+            history=[],
+        )
+
+    assert (raised.value.status_code, raised.value.code) == (429, 'google_rate_limit')
+
+
 
 @pytest.mark.asyncio
-async def test_guest_cannot_select_unknown_catalog_records_or_invoke_provider(client, monkeypatch):
+async def test_authenticated_user_cannot_select_unknown_catalog_records_or_invoke_provider(client, collaborator_token, monkeypatch):
     called = False
 
     async def fail_if_called(self, **kwargs):
@@ -501,7 +609,7 @@ async def test_guest_cannot_select_unknown_catalog_records_or_invoke_provider(cl
         raise AssertionError('provider não deveria ser chamado')
 
     monkeypatch.setattr(ProviderGateway, 'query', fail_if_called)
-    response = await client.post('/api/chat/query', json={
+    response = await client.post('/api/chat/query', headers={'Authorization': f'Bearer {collaborator_token}'}, json={
         'sessionId': str(uuid4()), 'chatInput': 'pergunta sobre tributos', 'modelId': str(uuid4()), 'knowledgeBaseId': str(uuid4()),
     })
     assert response.status_code == 404
@@ -531,11 +639,12 @@ async def test_catalog_validation_rejects_secrets_and_invalid_store_ids(client, 
 
 
 @pytest.mark.asyncio
-async def test_explicit_null_knowledge_base_disables_legacy_store(client, collaborator_token, admin_token, monkeypatch):
+async def test_explicit_null_knowledge_base_disables_legacy_store(client, collaborator_token, admin_token, grant_collaborator_access, monkeypatch):
     model = await client.post('/api/admin/models', headers={'Authorization': f'Bearer {admin_token}'}, json={
         'provider': 'openai', 'displayName': 'OpenAI sem RAG', 'modelId': 'gpt-no-rag',
     })
     assert model.status_code == 201
+    await grant_collaborator_access(web_search=True)
     captured = {}
 
     async def fake_query(self, **kwargs):

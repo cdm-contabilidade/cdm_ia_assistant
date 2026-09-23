@@ -1,5 +1,5 @@
 import { Send } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { AiModel, ImageAttachment, KnowledgeBase } from '../types'
 import { ImageUploader } from './ImageUploader'
 
@@ -9,9 +9,10 @@ export function InputBox({ disabled, catalogsLoading = false, onSend, aiModels =
   const [text, setText] = useState('')
   const [images, setImages] = useState<ImageAttachment[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const selectableModels = knowledgeBaseId ? aiModels : aiModels.filter((item) => item.provider.toLowerCase() === 'openai')
+  const selectableModels = aiModels.filter((item) => item.provider.toLowerCase() === (knowledgeBaseId ? 'gemini' : 'openai'))
+  const modelUnavailable = !catalogsLoading && (!selectableModels.length || !modelId)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = textareaRef.current
     if (!node) return
     node.style.height = 'auto'
@@ -19,7 +20,7 @@ export function InputBox({ disabled, catalogsLoading = false, onSend, aiModels =
   }, [text])
 
   async function send() {
-    if (!text.trim() || disabled) return
+    if (!text.trim() || disabled || modelUnavailable) return
     const currentText = text
     const currentImages = images
     setText('')
@@ -43,16 +44,16 @@ export function InputBox({ disabled, catalogsLoading = false, onSend, aiModels =
           <div className="min-w-0">
           <label className="block min-w-0 text-[11px] font-medium text-secondary dark:text-slate-400">
             Modelo
-            <select aria-label="Modelo" value={modelId} onChange={(event) => onModelChange(event.target.value)} disabled={catalogsLoading || !selectableModels.length || Boolean(knowledgeBaseId)} aria-describedby="rag-help" className="mt-0.5 h-8 w-full min-w-0 rounded-control border border-border bg-transparent px-2 text-xs text-charcoal outline-none transition hover:border-blue/60 focus:border-blue focus:ring-2 focus:ring-blue/20 dark:border-dark-border dark:bg-slate-900 dark:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
-              <option value="">{knowledgeBaseId ? 'Gemini obrigatório com RAG' : selectableModels.length ? 'OpenAI com pesquisa web' : 'Nenhum modelo OpenAI disponível'}</option>
+            <select aria-label="Modelo" value={modelId} onChange={(event) => onModelChange(event.target.value)} disabled={catalogsLoading || !selectableModels.length} aria-describedby="rag-help" className="mt-0.5 h-8 w-full min-w-0 rounded-control border border-border bg-transparent px-2 text-xs text-charcoal outline-none transition hover:border-blue/60 focus:border-blue focus:ring-2 focus:ring-blue/20 dark:border-dark-border dark:bg-slate-900 dark:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50">
+              <option value="">{knowledgeBaseId ? selectableModels.length ? 'Selecione um modelo Gemini' : 'Nenhum modelo Gemini disponível' : selectableModels.length ? 'Selecione um modelo OpenAI' : 'Nenhum modelo OpenAI disponível'}</option>
               {selectableModels.map((item) => <option key={item.id} value={item.id}>{item.displayName || item.name} · {item.provider}</option>)}
             </select>
           </label>
           </div>
-          <button type="button" onClick={() => void send()} disabled={disabled || !text.trim()} className="inline-flex h-8 w-full shrink-0 items-center justify-center gap-1.5 rounded-control bg-wine px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-wine/90 focus:outline-none focus:ring-2 focus:ring-wine/40 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem">
+          <button type="button" onClick={() => void send()} disabled={disabled || !text.trim() || modelUnavailable} className="inline-flex h-8 w-full shrink-0 items-center justify-center gap-1.5 rounded-control bg-wine px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-wine/90 focus:outline-none focus:ring-2 focus:ring-wine/40 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem">
             <Send size={14} aria-hidden="true" /> Enviar
           </button>
-          <p id="rag-help" className="pl-1 text-[10px] leading-4 text-secondary/75 dark:text-slate-400">{knowledgeBaseId ? 'RAG selecionado: a resposta usa somente o Store escolhido.' : 'Sem RAG: selecione um modelo OpenAI para pesquisar fontes atuais na web.'}</p>
+          <p id="rag-help" className="pl-1 text-[10px] leading-4 text-secondary/75 dark:text-slate-400">{modelUnavailable ? (knowledgeBaseId ? 'Não há modelo Gemini ativo para este Store. O envio está indisponível.' : 'Selecione um modelo ativo para enviar.') : knowledgeBaseId ? 'RAG selecionado: escolha um modelo Gemini ativo para este Store.' : 'Sem RAG: selecione um modelo OpenAI para pesquisar fontes atuais na web.'}</p>
         </div>
       </div>
     </div>

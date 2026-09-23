@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CatalogPanel } from './CatalogPanel'
 
 const mocks = vi.hoisted(() => ({
-  aiModels: vi.fn(),
+  models: vi.fn(),
   knowledgeBases: vi.fn(),
   createAiModel: vi.fn(),
   createKnowledgeBase: vi.fn(),
@@ -14,12 +14,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../services/api', () => ({
   adminApi: {
+    models: mocks.models,
+    knowledgeBases: mocks.knowledgeBases,
     createAiModel: mocks.createAiModel,
     createKnowledgeBase: mocks.createKnowledgeBase,
     updateAiModel: mocks.updateAiModel,
     updateKnowledgeBase: mocks.updateKnowledgeBase,
   },
-  catalogsApi: { aiModels: mocks.aiModels, knowledgeBases: mocks.knowledgeBases },
   getApiError: vi.fn(() => 'Não foi possível concluir a operação.'),
 }))
 
@@ -29,7 +30,7 @@ const base = { id: 'base-1', name: 'Reforma Tributária', store_id: 'fileSearchS
 describe('CatalogPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.aiModels.mockResolvedValue([model])
+    mocks.models.mockResolvedValue([model])
     mocks.knowledgeBases.mockResolvedValue([base])
   })
 
@@ -69,6 +70,21 @@ describe('CatalogPanel', () => {
 
     await waitFor(() => expect(mocks.updateKnowledgeBase).toHaveBeenCalledWith('base-1', { featured: true }))
     expect(await screen.findByRole('button', { name: 'Remover destaque de Reforma Tributária' })).toBeInTheDocument()
+  })
+
+  it('lists an inactive Gemini model so an admin can activate it for RAG', async () => {
+    const user = userEvent.setup()
+    const gemini = { id: 'gemini-1', provider: 'gemini', name: 'Gemini 3.1 Flash Lite', model_id: 'gemini-3.1-flash-lite', is_active: false }
+    mocks.models.mockResolvedValue([gemini])
+    mocks.updateAiModel.mockResolvedValue({ ...gemini, is_active: true })
+    render(<CatalogPanel />)
+
+    expect(await screen.findByText('Gemini 3.1 Flash Lite')).toBeInTheDocument()
+    expect(screen.getByText('Inativo')).toBeInTheDocument()
+    await user.click(within(screen.getAllByRole('article')[0]).getByRole('button', { name: 'Ativar' }))
+
+    await waitFor(() => expect(mocks.updateAiModel).toHaveBeenCalledWith('gemini-1', { is_active: true }))
+    expect(await screen.findByText('Ativo')).toBeInTheDocument()
   })
 
   it('clears the previous local highlight when the backend highlights another base', async () => {

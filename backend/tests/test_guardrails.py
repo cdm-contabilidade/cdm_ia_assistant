@@ -22,7 +22,7 @@ def test_conceptual_income_tax_question_is_allowed():
     assert decision.action == 'allow'
 
 def test_rag_summary_request_is_not_misclassified_as_safety():
-    decision = evaluate_guardrail('Faça um resumo sobre reforma tributária, em 10 linhas', scope_required=False)
+    decision = evaluate_guardrail('Apresente um resumo sobre reforma tributária, em 10 linhas', scope_required=False)
 
     assert decision.action == 'allow'
 
@@ -42,7 +42,7 @@ def test_selected_rag_skips_scope_refusal_but_keeps_safety():
     assert dangerous.action == 'safety_refusal'
 
 def test_personal_finance_question_is_refused_even_with_tax_term():
-    decision = evaluate_guardrail('Como declarar meu imposto de renda?')
+    decision = evaluate_guardrail('Como aumentar limite do cartão e declarar imposto de renda?')
 
     assert decision.action == 'scope_refusal'
     assert decision.message == SCOPE_MESSAGE

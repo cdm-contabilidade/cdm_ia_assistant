@@ -56,6 +56,19 @@ describe('Sidebar navigation', () => {
 
     expect(setKnowledgeBaseId).toHaveBeenCalledWith('rag-1')
   })
+  it('moves web search outside the knowledge-base card and keeps no-RAG selection', async () => {
+    const user = userEvent.setup()
+    const { setKnowledgeBaseId } = renderSidebar(vi.fn(), 'collaborator', 'rag-1')
+    const webSearchButton = screen.getByRole('button', { name: 'Pesquisar na Web' })
+
+    expect(webSearchButton.closest('section[aria-labelledby="knowledge-bases-title"]')).toBeNull()
+    expect(webSearchButton).toHaveAttribute('title', 'Pesquisar na Web')
+    expect(webSearchButton).toHaveAttribute('aria-pressed', 'false')
+
+    await user.click(webSearchButton)
+
+    expect(setKnowledgeBaseId).toHaveBeenCalledWith('')
+  })
 
 
 describe('Sidebar delete flow', () => {

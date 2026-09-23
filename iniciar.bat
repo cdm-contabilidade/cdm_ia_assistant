@@ -6,7 +6,16 @@ set "EXECUTABLE=%ROOT%dist\cdm-ai-assistant.exe"
 
 if /I "%~1"=="--dev" goto :development
 
+set "ENV_FILE=%ROOT%backend\.env"
+
 if exist "%EXECUTABLE%" (
+    if not exist "%ENV_FILE%" (
+        echo [ERRO] Configuracao nao encontrada em:
+        echo        %ENV_FILE%
+        echo Crie backend\.env antes de iniciar o executavel.
+        pause
+        exit /b 1
+    )
     start "CDM AI Assistant" "%EXECUTABLE%"
     exit /b 0
 )

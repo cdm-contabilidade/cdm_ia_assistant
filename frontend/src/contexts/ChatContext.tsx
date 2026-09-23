@@ -28,6 +28,9 @@ type ChatContextValue = {
 function defaultNoRagModel(models: AiModel[]) {
   return models.find((item) => item.provider.toLowerCase() === 'openai')?.id || ''
 }
+function defaultRagModel(models: AiModel[]) {
+  return models.find((item) => item.provider.toLowerCase() === 'gemini')?.id || ''
+}
 const ChatContext = createContext<ChatContextValue | null>(null)
 const SESSION_KEY = 'guest_session_id'
 const MESSAGES_KEY = 'guest_messages'
@@ -135,12 +138,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const changeModel = useCallback((id: string) => {
     setModelId(id)
-    if (id) setKnowledgeBaseId('')
-  }, [])
+    if (id && !knowledgeBaseId) setKnowledgeBaseId('')
+  }, [knowledgeBaseId])
 
   const changeKnowledgeBase = useCallback((id: string) => {
     setKnowledgeBaseId(id)
-    setModelId((current) => id ? '' : current || defaultNoRagModel(aiModels))
+    setModelId((current) => id ? current && aiModels.some((item) => item.id === current && item.provider.toLowerCase() === 'gemini') ? current : defaultRagModel(aiModels) : current || defaultNoRagModel(aiModels))
   }, [aiModels])
 
 
@@ -190,7 +193,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const history = user ? undefined : messages.slice(-20).map(({ role, content }) => ({ role, content }))
     setMessages((current) => [...current, optimistic]); setIsSending(true); setError(null)
     try {
-      const result = await chatApi.query({ sessionId, chatInput: clean, images: attachments.map((image) => image.dataUrl), chatId: user ? activeChatId : null, ...(history ? { history } : {}), ...(modelId ? { modelId } : {}), ...(knowledgeBaseId ? { knowledgeBaseId } : {}) })
+      if (!modelId) throw new Error(knowledgeBaseId ? 'Nenhum modelo Gemini ativo está disponível para este Store.' : 'Nenhum modelo ativo está disponível.')
+      const result = await chatApi.query({ sessionId, chatInput: clean, images: attachments.map((image) => image.dataUrl), chatId: user ? activeChatId : null, ...(history ? { history } : {}), modelId, ...(knowledgeBaseId ? { knowledgeBaseId } : {}) })
       setMessages((current) => [...current.filter((message) => message.id !== optimistic.id), ...normalizeQueryMessages(result, attachments)])
       if (user && result.chatId) {
         const updatedAt = new Date().toISOString()

@@ -5,16 +5,17 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 
-from app.core.auth import get_optional_user
-from app.core.config import get_settings
+from app.core.auth import get_current_user
 from app.core.database import get_session_factory
 from app.core.guardrails import evaluate_guardrail
 from app.core.rate_limit import limiter
+from app.core.permissions import can_use_knowledge_base, can_use_web_search
 from app.models import AIModel, Chat, KnowledgeBase, Message, User
 from app.schemas import ChatQueryRequest, ChatQueryResponse, MessagePublic, SourceCitation
-from app.services.agno_client import AgnoAnswer, AgnoError
+from app.services.agno_client import AgnoAnswer, AgnoError, GOOGLE_NOT_CONFIGURED_MESSAGE
 from app.services.image_validation import decode_images
 from app.services.provider_gateway import ProviderGateway
+from app.services.provider_credentials import ProviderCredentialError, require_provider_api_key
 
 router = APIRouter(prefix='/api/chat', tags=['chat'])
 
@@ -28,6 +29,8 @@ class ResolvedProvider:
     knowledge_base_name: str | None
     file_search_store_id: str | None
     use_legacy_knowledge_base: bool
+    enable_web_search: bool
+    provider_api_key: str
 
     @property
     def metadata(self) -> dict[str, str]:
@@ -92,11 +95,60 @@ def knowledge_base_required() -> HTTPException:
     )
 
 
+def google_not_configured() -> HTTPException:
+    return HTTPException(status_code=503, detail={'code': 'google_not_configured', 'message': GOOGLE_NOT_CONFIGURED_MESSAGE})
+
+
+def web_search_not_allowed() -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail={'code': 'web_search_not_allowed', 'message': 'Sua conta não tem permissão para usar a pesquisa na web.'},
+    )
+
+
+def model_required() -> HTTPException:
+    return HTTPException(
+        status_code=400,
+        detail={'code': 'model_required', 'message': 'Selecione um modelo ativo do catálogo antes de consultar.'},
+    )
+
+
+def provider_key_error(exc: ProviderCredentialError) -> HTTPException:
+    return HTTPException(status_code=exc.status_code, detail={'code': exc.code, 'message': exc.message})
+
+
+async def check_requested_permissions(user: User, model_id: UUID | None, knowledge_base_id: UUID | None) -> None:
+    """Check resource permissions before guardrails or provider work.
+
+    This also prevents a valid but unauthorized knowledge-base ID from being
+    accepted by a guardrail-only response.
+    """
+    if model_id is None:
+        raise model_required()
+    async with get_session_factory()() as db:
+        selected_model: AIModel | None = None
+        if model_id is not None:
+            selected_model = await db.scalar(select(AIModel).where(AIModel.id == model_id, AIModel.active.is_(True)))
+            if selected_model is None:
+                raise unavailable_model()
+        if knowledge_base_id is not None:
+            selected_knowledge_base = await db.scalar(
+                select(KnowledgeBase).where(KnowledgeBase.id == knowledge_base_id, KnowledgeBase.active.is_(True))
+            )
+            if selected_knowledge_base is None or not await can_use_knowledge_base(db, user, knowledge_base_id):
+                raise unavailable_knowledge_base()
+        if selected_model is not None and selected_model.provider == 'openai' and knowledge_base_id is None:
+            if not await can_use_web_search(db, user):
+                raise web_search_not_allowed()
+
+
 async def resolve_provider(
     model_id: UUID | None,
     knowledge_base_id: UUID | None,
+    user: User,
 ) -> ResolvedProvider:
-    settings = get_settings()
+    if model_id is None:
+        raise model_required()
     selected_model: AIModel | None = None
     selected_knowledge_base: KnowledgeBase | None = None
     async with get_session_factory()() as db:
@@ -108,11 +160,10 @@ async def resolve_provider(
             selected_knowledge_base = await db.scalar(
                 select(KnowledgeBase).where(KnowledgeBase.id == knowledge_base_id, KnowledgeBase.active.is_(True))
             )
-            if selected_knowledge_base is None:
+            if selected_knowledge_base is None or not await can_use_knowledge_base(db, user, knowledge_base_id):
                 raise unavailable_knowledge_base()
-
-    provider = selected_model.provider if selected_model else 'gemini'
-    resolved_model_id = selected_model.model_id if selected_model else settings.google_gemini_model
+    provider = selected_model.provider
+    resolved_model_id = selected_model.model_id
     if selected_knowledge_base is not None and provider != selected_knowledge_base.provider:
         raise HTTPException(
             status_code=400,
@@ -123,6 +174,17 @@ async def resolve_provider(
         )
     if provider == 'gemini' and selected_knowledge_base is None:
         raise knowledge_base_required()
+    enable_web_search = False
+    if provider == 'openai' and selected_knowledge_base is None:
+        async with get_session_factory()() as permission_db:
+            if not await can_use_web_search(permission_db, user):
+                raise web_search_not_allowed()
+        enable_web_search = True
+    async with get_session_factory()() as credential_db:
+        try:
+            provider_api_key = await require_provider_api_key(credential_db, provider)
+        except ProviderCredentialError as exc:
+            raise provider_key_error(exc) from exc
     return ResolvedProvider(
         provider=provider,
         model_id=resolved_model_id,
@@ -131,6 +193,8 @@ async def resolve_provider(
         knowledge_base_name=selected_knowledge_base.name if selected_knowledge_base else None,
         file_search_store_id=selected_knowledge_base.file_search_store_id if selected_knowledge_base else None,
         use_legacy_knowledge_base=False,
+        enable_web_search=enable_web_search,
+        provider_api_key=provider_api_key,
     )
 
 
@@ -212,10 +276,10 @@ async def persist_authenticated_response(
 async def query(
     payload: ChatQueryRequest,
     request: Request,
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ) -> ChatQueryResponse:
-    user_id = user.id if user else None
-    limiter.check(f'chat:{request.client.host if request.client else "unknown"}:{user_id or "guest"}')
+    user_id = user.id
+    limiter.check(f'chat:{request.client.host if request.client else "unknown"}:{user_id}')
     cleaned_input = payload.chat_input.strip()
     if not cleaned_input:
         raise HTTPException(status_code=422, detail={'code': 'empty_chat_input', 'message': 'A mensagem não pode ficar vazia.'})
@@ -235,21 +299,11 @@ async def query(
     image_bytes = image_bytes_list[0] if payload.image is not None and image_bytes_list else None
     image_format = image_formats[0] if payload.image is not None and image_formats else None
     target_chat_id = payload.chat_id or payload.session_id
+    await check_requested_permissions(user, payload.model_id, payload.knowledge_base_id)
     decision = evaluate_guardrail(cleaned_input, scope_required=payload.knowledge_base_id is None)
     if not decision.allowed:
         answer = AgnoAnswer(text=decision.message or '', sources=[])
         provider_metadata = {'guardrail': decision.code or 'policy_refusal'}
-        if user_id is None:
-            return ChatQueryResponse(
-                sessionId=payload.session_id,
-                chatId=None,
-                title=None,
-                answer=answer.text,
-                sources=[],
-                messages=ephemeral_messages(payload, answer.text, image_metadata, provider_metadata),
-                modelId=payload.model_id,
-                knowledgeBaseId=None,
-            )
         return await persist_authenticated_response(
             payload,
             user_id,
@@ -260,15 +314,15 @@ async def query(
             provider_metadata,
         )
     history = [message.model_dump() for message in payload.history]
-    if user_id is not None:
-        history = await load_authenticated_history(target_chat_id, user_id)
-    resolved_provider = await resolve_provider(payload.model_id, payload.knowledge_base_id)
+    history = await load_authenticated_history(target_chat_id, user_id)
+    resolved_provider = await resolve_provider(payload.model_id, payload.knowledge_base_id, user)
     try:
         answer = await ProviderGateway().query(
             provider=resolved_provider.provider,
             model_id=resolved_provider.model_id,
             file_search_store_id=resolved_provider.file_search_store_id,
-            enable_web_search=resolved_provider.provider == 'openai' and resolved_provider.file_search_store_id is None,
+            enable_web_search=resolved_provider.enable_web_search,
+            api_key=resolved_provider.provider_api_key,
             use_legacy_knowledge_base=resolved_provider.use_legacy_knowledge_base,
             prompt=cleaned_input,
             history=history,
@@ -281,19 +335,6 @@ async def query(
         )
     except AgnoError as exc:
         raise HTTPException(status_code=exc.status_code, detail={'code': exc.code, 'message': exc.message}) from exc
-    if user_id is None:
-        return ChatQueryResponse(
-            sessionId=payload.session_id,
-            chatId=None,
-            title=None,
-            answer=answer.text,
-            sources=response_sources(answer.sources),
-            messages=ephemeral_messages(payload, answer.text, image_metadata, resolved_provider.metadata),
-            modelId=payload.model_id,
-            knowledgeBaseId=resolved_provider.knowledge_base_id,
-            model={'name': resolved_provider.model_display_name} if resolved_provider.model_display_name else None,
-            knowledgeBase={'name': resolved_provider.knowledge_base_name} if resolved_provider.knowledge_base_name else None,
-        )
     return await persist_authenticated_response(
         payload,
         user_id,

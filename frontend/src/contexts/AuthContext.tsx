@@ -17,11 +17,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    authApi.refresh().then(async (token) => {
-      if (!token) { setStatus('guest'); return }
-      try { setUser(await authApi.me()); setStatus('authenticated') }
-      catch { setAccessToken(null); setStatus('guest') }
-    }).catch(() => setStatus('guest'))
+    let active = true
+    async function restoreSession() {
+      try {
+        const token = await authApi.refresh()
+        if (!active) return
+        if (!token) { setUser(null); setStatus('guest'); return }
+        try {
+          const restoredUser = await authApi.me()
+          if (!active) return
+          setUser(restoredUser)
+          setStatus('authenticated')
+        } catch {
+          setAccessToken(null)
+          if (active) { setUser(null); setStatus('guest') }
+        }
+      } catch {
+        setAccessToken(null)
+        if (active) { setUser(null); setStatus('guest') }
+      }
+    }
+    void restoreSession()
+    return () => { active = false }
   }, [])
 
   async function authenticate(action: () => Promise<TokenResponse>) {

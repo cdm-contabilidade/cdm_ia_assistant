@@ -8,6 +8,20 @@ from app.services.agno_client import AgnoAnswer, AgnoError, SourceCitation
 
 logger = logging.getLogger(__name__)
 MAX_SOURCES = 20
+OPENAI_CREDIT_BALANCE_MESSAGE = (
+    'O saldo de créditos pré-pagos da OpenAI foi esgotado. Adicione créditos antes de tentar novamente.'
+)
+OPENAI_SPEND_LIMIT_MESSAGE = (
+    'O limite de gasto da OpenAI foi atingido. Verifique os limites da organização e do projeto antes de tentar novamente.'
+)
+OPENAI_USAGE_LIMIT_MESSAGE = (
+    'O limite de uso da organização na OpenAI foi atingido. Solicite um limite maior antes de tentar novamente.'
+)
+OPENAI_QUOTA_MESSAGE = (
+    'A cota da OpenAI não está disponível. Verifique a cota, os créditos e o billing antes de tentar novamente.'
+)
+OPENAI_RATE_LIMIT_MESSAGE = 'O serviço de resposta está temporariamente limitado.'
+
 
 ACCOUNTING_INSTRUCTIONS = (
     'Você é um Especialista Contábil para empresas brasileiras. Responda somente sobre '
@@ -44,9 +58,11 @@ class OpenAIResponsesClient:
         image_bytes_list: list[bytes] | None = None,
         image_formats: list[str] | None = None,
         enable_web_search: bool = False,
+        api_key: str | None = None,
     ) -> AgnoAnswer:
         settings = get_settings()
-        if not settings.openai_api_key or not settings.openai_api_key.strip():
+        selected_api_key = api_key if api_key is not None else settings.openai_api_key
+        if not selected_api_key or not selected_api_key.strip():
             raise AgnoError(503, 'openai_not_configured', 'O provedor OpenAI não está configurado.')
         if AsyncOpenAI is None:
             raise AgnoError(503, 'openai_unavailable', 'O provedor OpenAI não está disponível no servidor.')
@@ -70,7 +86,7 @@ class OpenAIResponsesClient:
             request_kwargs['tools'] = [{'type': 'web_search_preview', 'search_context_size': 'medium'}]
             request_kwargs['include'] = ['web_search_call.action.sources']
 
-        client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.openai_timeout_seconds)
+        client = AsyncOpenAI(api_key=selected_api_key.strip(), timeout=settings.openai_timeout_seconds)
         try:
             response = await asyncio.wait_for(
                 client.responses.create(**request_kwargs),
@@ -83,8 +99,17 @@ class OpenAIResponsesClient:
             raise
         except Exception as exc:
             error = _provider_error(exc)
-            logger.warning('OpenAI provider request failed', extra={'code': error.code})
+            logger.warning(
+                'OpenAI provider request failed',
+                extra={
+                    'status': _provider_status(exc),
+                    'provider_code': _safe_log_value(_provider_code(exc)),
+                    'provider_type': _safe_log_value(_provider_type(exc)),
+                    'request_id': _safe_log_value(_provider_request_id(exc)),
+                },
+            )
             raise error from exc
+
         finally:
             close = getattr(client, 'close', None)
             if close is not None:
@@ -99,12 +124,72 @@ class OpenAIResponsesClient:
 
 
 def _provider_error(exc: Exception) -> AgnoError:
-    status = getattr(getattr(exc, 'response', None), 'status_code', None) or getattr(exc, 'status_code', None)
-    if status == 429 or 'rate' in exc.__class__.__name__.lower() or 'quota' in str(exc).lower():
-        return AgnoError(429, 'openai_rate_limit', 'O serviço de resposta está temporariamente limitado.')
-    if 'timeout' in exc.__class__.__name__.lower():
+    exception_name = exc.__class__.__name__.lower()
+    if 'timeout' in exception_name:
         return AgnoError(504, 'openai_timeout', 'O serviço de resposta demorou além do limite.')
+
+    provider_code = _provider_code(exc)
+    provider_type = _provider_type(exc)
+    diagnostic = _provider_diagnostic(exc)
+
+    if provider_code == 'credit_balance_exhausted':
+        return AgnoError(429, 'openai_credit_balance_exhausted', OPENAI_CREDIT_BALANCE_MESSAGE)
+    if provider_code in {'organization_spend_limit_exceeded', 'project_spend_limit_exceeded'}:
+        return AgnoError(429, 'openai_spend_limit_exceeded', OPENAI_SPEND_LIMIT_MESSAGE)
+    if provider_code == 'organization_usage_limit_exceeded':
+        return AgnoError(429, 'openai_usage_limit_exceeded', OPENAI_USAGE_LIMIT_MESSAGE)
+    if provider_code == 'insufficient_quota' or provider_type == 'insufficient_quota':
+        return AgnoError(429, 'openai_quota_exceeded', OPENAI_QUOTA_MESSAGE)
+    if any(marker in diagnostic for marker in ('insufficient quota', 'quota exceeded', 'current quota')):
+        return AgnoError(429, 'openai_quota_exceeded', OPENAI_QUOTA_MESSAGE)
+
+    if provider_type == 'rate_limit_error' or provider_code == 'slow_down' or 'rate' in exception_name or _provider_status(exc) == 429:
+        return AgnoError(429, 'openai_rate_limit', OPENAI_RATE_LIMIT_MESSAGE)
     return AgnoError(502, 'openai_provider_error', 'Não foi possível consultar o serviço de resposta.')
+
+
+def _provider_status(exc: Exception) -> Any:
+    response = getattr(exc, 'response', None)
+    return getattr(response, 'status_code', None) or getattr(exc, 'status_code', None)
+
+
+def _provider_body_error(exc: Exception) -> Any:
+    body = getattr(exc, 'body', None)
+    return _value(body, 'error', body)
+
+
+def _provider_code(exc: Exception) -> str | None:
+    value = getattr(exc, 'code', None) or _value(_provider_body_error(exc), 'code')
+    return value.strip().lower() if isinstance(value, str) and value.strip() else None
+
+
+def _provider_type(exc: Exception) -> str | None:
+    value = getattr(exc, 'type', None) or _value(_provider_body_error(exc), 'type')
+    return value.strip().lower() if isinstance(value, str) and value.strip() else None
+
+
+def _provider_diagnostic(exc: Exception) -> str:
+    message = _value(_provider_body_error(exc), 'message')
+    values = [message, str(exc)]
+    return ' '.join(value.lower() for value in values if isinstance(value, str))
+
+
+def _provider_request_id(exc: Exception) -> str | None:
+    request_id = getattr(exc, 'request_id', None)
+    if request_id:
+        return request_id
+    response = getattr(exc, 'response', None)
+    headers = getattr(response, 'headers', None)
+    if headers is not None:
+        return headers.get('x-request-id') or headers.get('X-Request-Id')
+    return None
+
+
+def _safe_log_value(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    safe = ''.join(character for character in value if character.isalnum() or character in '._-')
+    return safe[:120] or None
 
 
 def _value(value: Any, name: str, default: Any = None) -> Any:

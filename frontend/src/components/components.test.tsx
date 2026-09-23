@@ -2,22 +2,24 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { AdminPanel } from './AdminPanel'
+import { AccessManagementPanel } from './AccessManagementPanel'
 import { InputBox } from './InputBox'
 import { MessageBubble } from './MessageBubble'
 import { ThinkingIndicator } from './ChatArea'
 import { MarkdownRenderer } from './MarkdownRenderer'
-import { adminApi } from '../services/api'
+import { adminApi, catalogsApi } from '../services/api'
 
 describe('chat surface behavior', () => {
-  it('renders GFM tables and code blocks', () => {
+  it('renders GFM tables inside a contained scroll region', () => {
     render(<MarkdownRenderer content={'| Campo | Valor |\n| --- | --- |\n| status | ok |\n\n```ts\nconst answer = true\n```'} />)
     expect(screen.getByText('status')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Tabela com rolagem horizontal' })).toContainElement(screen.getByRole('table'))
     expect(screen.getByText('Copiar')).toBeInTheDocument()
   })
 
   it('sends on Enter but preserves Shift+Enter', async () => {
     const user = userEvent.setup(); const onSend = vi.fn().mockResolvedValue(undefined)
-    render(<InputBox disabled={false} onSend={onSend} />)
+    render(<InputBox disabled={false} onSend={onSend} aiModels={[{ id: 'openai-1', provider: 'openai', name: 'OpenAI' }]} modelId="openai-1" />)
     const input = screen.getByLabelText('Mensagem')
     await user.type(input, 'linha 1')
     await user.keyboard('{Shift>}{Enter}{/Shift}linha 2')
@@ -25,12 +27,12 @@ describe('chat surface behavior', () => {
     await user.keyboard('{Enter}')
     expect(onSend).toHaveBeenCalledWith('linha 1\nlinha 2', null)
   })
-  it('removes the chat RAG selector and locks the model when a sidebar RAG is active', () => {
-    render(<InputBox disabled={false} onSend={vi.fn().mockResolvedValue(undefined)} aiModels={[{ id: 'gemini-1', provider: 'gemini', name: 'Gemini' }]} modelId="" knowledgeBaseId="rag-1" />)
+  it('keeps an active Gemini model editable when a sidebar RAG is active', () => {
+    render(<InputBox disabled={false} onSend={vi.fn().mockResolvedValue(undefined)} aiModels={[{ id: 'gemini-1', provider: 'gemini', name: 'Gemini' }]} modelId="gemini-1" knowledgeBaseId="rag-1" />)
 
     expect(screen.queryByRole('combobox', { name: 'RAG Google (opcional)' })).not.toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Modelo' })).toBeDisabled()
-    expect(screen.getByText('RAG selecionado: a resposta usa somente o Store escolhido.')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Modelo' })).not.toBeDisabled()
+    expect(screen.getByText('RAG selecionado: escolha um modelo Gemini ativo para este Store.')).toBeInTheDocument()
   })
 
   it('offers only OpenAI models without a selected RAG', () => {
@@ -66,6 +68,19 @@ describe('chat surface behavior', () => {
     vi.spyOn(adminApi, 'users').mockResolvedValue([])
     render(<AdminPanel onClose={vi.fn()} />)
     expect(await screen.findByText('Nenhum colaborador cadastrado.')).toBeInTheDocument()
+    vi.restoreAllMocks()
+  })
+
+  it('creates a group and keeps its access rules explicit', async () => {
+    vi.spyOn(adminApi, 'groups').mockResolvedValue([])
+    vi.spyOn(catalogsApi, 'knowledgeBases').mockResolvedValue([])
+    vi.spyOn(adminApi, 'createGroup').mockResolvedValue({ id: 'group-1', name: 'Comercial', userIds: [], knowledgeBaseIds: [], webSearch: false })
+    const user = userEvent.setup()
+    render(<AccessManagementPanel users={[{ id: 'user-1', name: 'Ana', email: 'ana@testes.dev', role: 'collaborator', is_active: true, is_blacklisted: false, created_at: '' }]} />)
+    await user.type(screen.getByLabelText('Nome do grupo'), 'Comercial')
+    await user.click(screen.getByRole('button', { name: 'Criar grupo' }))
+    expect(await screen.findByText('Regra do grupo')).toBeInTheDocument()
+    expect(adminApi.createGroup).toHaveBeenCalledWith({ name: 'Comercial' })
     vi.restoreAllMocks()
   })
 

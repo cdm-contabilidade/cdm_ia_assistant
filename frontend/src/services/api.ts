@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
-import type { AdminUser, AiModel, ApiError, ChatQueryResponse, ChatSummary, HistoryMessage, KnowledgeBase, Message, TokenResponse, User } from '../types'
+import type { AccessGroup, AdminUser, AiModel, ApiError, ChatQueryResponse, ChatSummary, HistoryMessage, KnowledgeBase, Message, PermissionOverride, ProviderName, ProviderStatus, TokenResponse, User } from '../types'
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || ''
 export const api = axios.create({ baseURL, withCredentials: true, headers: { 'Content-Type': 'application/json' } })
@@ -10,8 +10,14 @@ type RetriableConfig = InternalAxiosRequestConfig & { _retry?: boolean }
 
 export function setAccessToken(token: string | null) { accessToken = token }
 export function getApiError(error: unknown): string {
-  const response = (error as AxiosError<ApiError>).response?.data
-  return response?.error?.message || response?.message || 'Não foi possível concluir a operação.'
+  const apiError = error as AxiosError<ApiError>
+  const response = apiError.response?.data
+  if (response?.error?.message) return response.error.message
+  if (typeof response?.detail === 'string') return response.detail
+  if (response?.detail?.message) return response.detail.message
+  if (response?.message) return response.message
+  if (apiError.message) return apiError.message
+  return 'Não foi possível concluir a operação.'
 }
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -58,12 +64,27 @@ export const adminApi = {
   users: () => api.get<AdminUser[]>('/api/admin/users').then((r) => r.data),
   createUser: (payload: { email: string; name: string; password: string }) => api.post<AdminUser>('/api/admin/users', payload).then((r) => r.data),
   updateUser: (userId: string, payload: { name?: string; password?: string; is_active?: boolean; is_blacklisted?: boolean }) => api.patch<AdminUser>(`/api/admin/users/${userId}`, payload).then((r) => r.data),
+  models: () => api.get<AiModel[]>('/api/admin/models').then((r) => r.data),
   createAiModel: (payload: { provider: string; name: string; model_id: string }) => api.post<AiModel>('/api/admin/ai-models', payload).then((r) => r.data),
   updateAiModel: (id: string, payload: { provider?: string; name?: string; model_id?: string; is_active?: boolean }) => api.patch<AiModel>(`/api/admin/ai-models/${id}`, payload).then((r) => r.data),
   removeAiModel: (id: string) => api.delete(`/api/admin/ai-models/${id}`),
+  knowledgeBases: () => api.get<KnowledgeBase[]>('/api/admin/knowledge-bases').then((r) => r.data),
   createKnowledgeBase: (payload: { name: string; store_id: string }) => api.post<KnowledgeBase>('/api/admin/knowledge-bases', payload).then((r) => r.data),
   updateKnowledgeBase: (id: string, payload: { name?: string; store_id?: string; is_active?: boolean; featured?: boolean }) => api.patch<KnowledgeBase>(`/api/admin/knowledge-bases/${id}`, payload).then((r) => r.data),
   removeKnowledgeBase: (id: string) => api.delete(`/api/admin/knowledge-bases/${id}`),
+  groups: () => api.get<AccessGroup[]>('/api/admin/groups').then((r) => r.data),
+  createGroup: (payload: { name: string }) => api.post<AccessGroup>('/api/admin/groups', payload).then((r) => r.data),
+  updateGroup: (id: string, payload: { name: string }) => api.patch<AccessGroup>(`/api/admin/groups/${id}`, payload).then((r) => r.data),
+  removeGroup: (id: string) => api.delete(`/api/admin/groups/${id}`),
+  replaceGroupMembers: (id: string, userIds: string[]) => api.put<AccessGroup>(`/api/admin/groups/${id}/members`, { userIds }).then((r) => r.data),
+  replaceGroupGrants: (id: string, payload: { knowledgeBaseIds: string[]; webSearch: boolean }) => api.put<AccessGroup>(`/api/admin/groups/${id}/grants`, payload).then((r) => r.data),
+  permissionOverrides: (userId: string) => api.get<PermissionOverride[]>(`/api/admin/users/${userId}/permission-overrides`).then((r) => r.data),
+  replacePermissionOverrides: (userId: string, overrides: PermissionOverride[]) => api.put<PermissionOverride[]>(`/api/admin/users/${userId}/permission-overrides`, { overrides: overrides.map(({ capability, knowledgeBaseId, allowed }) => ({ capability, ...(knowledgeBaseId ? { knowledgeBaseId } : {}), allowed })) }).then((r) => r.data),
+  providers: () => api.get<ProviderStatus[]>('/api/admin/provider-keys').then((r) => r.data),
+  saveProviderCredential: (provider: ProviderName, apiKey: string) => api.put<ProviderStatus>(`/api/admin/provider-keys/${provider}`, { apiKey }).then((r) => r.data),
+  removeProviderCredential: (provider: ProviderName) => api.delete(`/api/admin/provider-keys/${provider}`),
+  importProviderCredential: (provider: ProviderName) => api.post<ProviderStatus>(`/api/admin/provider-keys/${provider}/import-env`).then((r) => r.data),
+  revertProviderToEnv: (provider: ProviderName) => api.post<ProviderStatus>(`/api/admin/provider-keys/${provider}/revert-to-env`).then((r) => r.data),
 }
 
 export const catalogsApi = {

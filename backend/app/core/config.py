@@ -7,8 +7,17 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-if getattr(sys, 'frozen', False) and getattr(sys, '_MEIPASS', None):
-    ENV_FILE = Path(getattr(sys, '_MEIPASS')) / 'backend' / '.env'
+def packaged_env_file() -> Path:
+    executable_root = Path(sys.executable).resolve().parent
+    candidates = (
+        executable_root / 'backend' / '.env',
+        executable_root.parent / 'backend' / '.env',
+    )
+    return next((candidate for candidate in candidates if candidate.is_file()), candidates[0])
+
+
+if getattr(sys, 'frozen', False):
+    ENV_FILE = packaged_env_file()
 else:
     ENV_FILE = Path(__file__).resolve().parents[2] / '.env'
 
@@ -29,10 +38,11 @@ class Settings(BaseSettings):
     ssh_password: str | None = None
     ssh_private_key: str | None = None
     jwt_secret_key: str = Field(min_length=32)
-    google_api_key: str = Field(min_length=1)
+    google_api_key: str | None = None
     google_file_search_store_name: str = Field(min_length=1)
-    google_gemini_model: str = 'gemini-3.5-flash'
+    google_gemini_model: str | None = None
     openai_api_key: str | None = None
+    provider_keys_encryption_key: str | None = None
     openai_timeout_seconds: float = 90
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
@@ -47,8 +57,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode='after')
     def validate_runtime(self):
-        if not self.google_api_key.strip() or not self.google_file_search_store_name.strip():
-            raise ValueError('GOOGLE_API_KEY and GOOGLE_FILE_SEARCH_STORE_NAME are required.')
+        if self.google_api_key is not None and not self.google_api_key.strip():
+            self.google_api_key = None
+        if not self.google_file_search_store_name.strip():
+            raise ValueError('GOOGLE_FILE_SEARCH_STORE_NAME is required.')
         if self.ssh_enable and (not self.ssh_host or not self.ssh_user or (not self.ssh_password and not self.ssh_private_key)):
             raise ValueError('SSH_HOST, SSH_USER and SSH_PASSWORD or SSH_PRIVATE_KEY are required when SSH_ENABLE=true.')
         if not self.database_url and not all((self.db_host, self.db_name, self.db_user, self.db_password)):

@@ -1,6 +1,6 @@
 import { Cpu, Database } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { adminApi, catalogsApi, getApiError } from '../services/api'
+import { adminApi, getApiError } from '../services/api'
 import type { AiModel, KnowledgeBase } from '../types'
 
 export function CatalogPanel() {
@@ -13,7 +13,7 @@ export function CatalogPanel() {
   const active = (item: AiModel | KnowledgeBase) => item.is_active !== false && item.isActive !== false
 
   useEffect(() => {
-    void Promise.all([catalogsApi.aiModels(), catalogsApi.knowledgeBases()])
+    void Promise.all([adminApi.models(), adminApi.knowledgeBases()])
       .then(([loadedModels, loadedBases]) => { setModels(loadedModels); setBases(loadedBases) })
       .catch((cause) => setError(getApiError(cause)))
   }, [])
@@ -64,7 +64,7 @@ export function CatalogPanel() {
       <article className="rounded-container border border-border bg-white p-5 shadow-panel dark:border-dark-border dark:bg-dark-surface">
         <div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-blue/10 text-blue dark:bg-blue/20 dark:text-slate-100"><Cpu size={20} /></span><div><h3 className="text-base font-semibold text-navy dark:text-slate-100">Novo modelo</h3><p className="mt-1 text-sm text-secondary dark:text-slate-400">Conecte um provedor de inteligência artificial.</p></div></div>
         <form onSubmit={createModel} className="mt-5 space-y-3">
-          <label className="block text-sm font-medium text-charcoal dark:text-slate-200"><span>Provedor</span><input required placeholder="Ex.: OpenAI" aria-label="Provider" value={model.provider} onChange={(event) => setModel({ ...model, provider: event.target.value })} className="mt-1 h-10 w-full rounded-control border border-border bg-white px-3 text-sm font-normal text-charcoal placeholder:text-secondary/60 focus:border-blue focus:outline-none dark:border-dark-border dark:bg-slate-900 dark:text-slate-100" /></label>
+          <label className="block text-sm font-medium text-charcoal dark:text-slate-200"><span>Provedor</span><select required aria-label="Provider" value={model.provider} onChange={(event) => setModel({ ...model, provider: event.target.value })} className="mt-1 h-10 w-full rounded-control border border-border bg-white px-3 text-sm font-normal text-charcoal focus:border-blue focus:outline-none dark:border-dark-border dark:bg-slate-900 dark:text-slate-100"><option value="">Selecione</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option></select></label>
           <label className="block text-sm font-medium text-charcoal dark:text-slate-200"><span>Nome exibido</span><input required placeholder="Ex.: GPT-4o" aria-label="Nome do modelo" value={model.name} onChange={(event) => setModel({ ...model, name: event.target.value })} className="mt-1 h-10 w-full rounded-control border border-border bg-white px-3 text-sm font-normal text-charcoal placeholder:text-secondary/60 focus:border-blue focus:outline-none dark:border-dark-border dark:bg-slate-900 dark:text-slate-100" /></label>
           <label className="block text-sm font-medium text-charcoal dark:text-slate-200"><span>Model ID</span><input required placeholder="Ex.: gpt-4o" aria-label="Model ID" value={model.model_id} onChange={(event) => setModel({ ...model, model_id: event.target.value })} className="mt-1 h-10 w-full rounded-control border border-border bg-white px-3 text-sm font-normal text-charcoal placeholder:text-secondary/60 focus:border-blue focus:outline-none dark:border-dark-border dark:bg-slate-900 dark:text-slate-100" /></label>
           <button type="submit" className="inline-flex h-10 items-center justify-center rounded-control bg-blue px-4 text-sm font-semibold text-white transition hover:bg-navy focus:outline-none focus:ring-2 focus:ring-blue/40 active:scale-[.98]">Cadastrar modelo</button>
