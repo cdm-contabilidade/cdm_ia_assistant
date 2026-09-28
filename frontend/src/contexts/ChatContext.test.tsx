@@ -76,4 +76,17 @@ describe('chat message metadata normalization', () => {
     expect(messages[0]).toMatchObject({ knowledgeBaseId: 'rag-1', knowledgeBaseName: 'Fiscal', modelId: 'gemini-model', modelName: 'Gemini', has_image: true, imageUrls: ['data:image/png;base64,abc'] })
     expect(messages[1].sources).toEqual(result.sources)
   })
+
+  it('maps persisted image_data onto imageUrls', () => {
+    const message = normalizeMessage({
+      id: 'user-2',
+      role: 'user',
+      content: 'Pergunta com imagem',
+      created_at: new Date().toISOString(),
+      has_image: true,
+      image_data: ['data:image/png;base64,abc'],
+    })
+
+    expect(message.imageUrls).toEqual(['data:image/png;base64,abc'])
+  })
 })

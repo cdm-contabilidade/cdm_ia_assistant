@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.core.errors import error_body
 from app.core.rate_limit import limiter
 from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, verify_password
+from app.core.permissions import can_use_web_search
 from app.models import User
 from app.schemas import LoginRequest, RegisterRequest, TokenResponse, UserPublic
 
@@ -33,10 +34,15 @@ def invalid_refresh(request: Request) -> JSONResponse:
     return result
 
 
-async def issue_tokens(user: User, response: Response) -> TokenResponse:
-    set_refresh_cookie(response, create_refresh_token(user.id))
-    return TokenResponse(access_token=create_access_token(user.id), user=UserPublic.model_validate(user))
+async def public_user(db: AsyncSession, user: User) -> UserPublic:
+    result = UserPublic.model_validate(user)
+    result.can_web_search = await can_use_web_search(db, user)
+    return result
 
+
+async def issue_tokens(user: User, response: Response, db: AsyncSession) -> TokenResponse:
+    set_refresh_cookie(response, create_refresh_token(user.id))
+    return TokenResponse(access_token=create_access_token(user.id), user=await public_user(db, user))
 
 @router.post('/register', response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(
@@ -55,7 +61,7 @@ async def register(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail={'code': 'email_in_use', 'message': 'Não foi possível criar a conta com este email.'})
-    return await issue_tokens(user, response)
+    return await issue_tokens(user, response, db)
 
 
 @router.post('/login', response_model=TokenResponse)
@@ -66,7 +72,7 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
         raise HTTPException(status_code=401, detail={'code': 'invalid_credentials', 'message': 'Email ou senha inválidos.'})
     if not user.is_active or user.is_blacklisted:
         raise HTTPException(status_code=403, detail={'code': 'account_unavailable', 'message': 'A conta não está disponível.'})
-    return await issue_tokens(user, response)
+    return await issue_tokens(user, response, db)
 
 
 @router.post('/refresh', response_model=TokenResponse)
@@ -81,7 +87,7 @@ async def refresh(request: Request, response: Response, db: AsyncSession = Depen
     user = await db.scalar(select(User).where(User.id == user_id))
     if user is None or not user.is_active or user.is_blacklisted:
         return invalid_refresh(request)
-    return await issue_tokens(user, response)
+    return await issue_tokens(user, response, db)
 
 
 @router.post('/logout', status_code=status.HTTP_204_NO_CONTENT)
@@ -90,5 +96,5 @@ async def logout(response: Response) -> None:
 
 
 @router.get('/me', response_model=UserPublic)
-async def me(user: User = Depends(get_current_user)) -> User:
-    return user
+async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> UserPublic:
+    return await public_user(db, user)

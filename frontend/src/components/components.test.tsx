@@ -90,4 +90,16 @@ describe('chat surface behavior', () => {
     expect(screen.getByRole('status', { name: 'O assistente está pensando' })).toBeInTheDocument()
     expect(container.querySelectorAll('.thinking-dot')).toHaveLength(3)
   })
+
+  it('opens the image viewer from a thumbnail and navigates with arrows', async () => {
+    const user = userEvent.setup()
+    render(<MessageBubble message={{ id: 'user-1', role: 'user', content: 'Pergunta com imagens', created_at: new Date().toISOString(), has_image: true, imageUrls: ['data:image/png;base64,aaa', 'data:image/png;base64,bbb'] }} />)
+
+    await user.click(screen.getByRole('button', { name: 'Ampliar imagem 1' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('1 de 2')
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByRole('dialog')).toHaveTextContent('2 de 2')
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
 })

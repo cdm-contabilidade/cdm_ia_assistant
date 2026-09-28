@@ -97,8 +97,12 @@ async def test_web_search_requires_explicit_grant_and_group_grant_allows(client,
     denied = await client.post('/api/chat/query', headers={'Authorization': f'Bearer {collaborator_token}'}, json=payload)
     assert denied.status_code == 403
     assert denied.json()['error']['code'] == 'web_search_not_allowed'
+    denied_user = await client.get('/api/auth/me', headers={'Authorization': f'Bearer {collaborator_token}'})
+    assert denied_user.json()['can_web_search'] is False
 
     _, user_id = await authorization_group(client, admin_token, collaborator_token, web_search=True)
+    granted_user = await client.get('/api/auth/me', headers={'Authorization': f'Bearer {collaborator_token}'})
+    assert granted_user.json()['can_web_search'] is True
     override = await client.put(
         f'/api/admin/users/{user_id}/permission-overrides',
         headers={'Authorization': f'Bearer {admin_token}'},
@@ -107,11 +111,15 @@ async def test_web_search_requires_explicit_grant_and_group_grant_allows(client,
     assert override.status_code == 200
     denied_by_override = await client.post('/api/chat/query', headers={'Authorization': f'Bearer {collaborator_token}'}, json=payload)
     assert denied_by_override.status_code == 403
+    denied_override_user = await client.get('/api/auth/me', headers={'Authorization': f'Bearer {collaborator_token}'})
+    assert denied_override_user.json()['can_web_search'] is False
     await client.put(
         f'/api/admin/users/{user_id}/permission-overrides',
         headers={'Authorization': f'Bearer {admin_token}'},
         json={'overrides': []},
     )
+    restored_user = await client.get('/api/auth/me', headers={'Authorization': f'Bearer {collaborator_token}'})
+    assert restored_user.json()['can_web_search'] is True
     captured = {}
 
     async def fake_query(self, **kwargs):

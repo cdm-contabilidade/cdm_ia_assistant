@@ -16,10 +16,10 @@ vi.mock('../services/api', () => ({ getApiError: mocks.getApiError }))
 const chat = { id: 'chat-1', title: 'Consulta fiscal', created_at: '2025-01-01', updated_at: '2025-01-01' }
 const rag = { id: 'rag-1', name: 'Reforma Tributária', featured: true }
 
-function renderSidebar(deleteChat = vi.fn(), role: 'admin' | 'collaborator' = 'collaborator', selectedRag = '') {
+function renderSidebar(deleteChat = vi.fn(), role: 'admin' | 'collaborator' = 'collaborator', selectedRag = '', canWebSearch = true) {
   const onNotify = vi.fn()
   const setKnowledgeBaseId = vi.fn()
-  mocks.useAuth.mockReturnValue({ user: { name: 'Ana', email: 'ana@example.com', role }, logout: vi.fn() })
+  mocks.useAuth.mockReturnValue({ user: { name: 'Ana', email: 'ana@example.com', role, can_web_search: canWebSearch }, logout: vi.fn() })
   mocks.useChat.mockReturnValue({ chats: [chat], activeChatId: chat.id, selectChat: vi.fn(), createChat: vi.fn(), renameChat: vi.fn(), deleteChat, catalogsLoading: false, knowledgeBases: [rag], knowledgeBaseId: selectedRag, setKnowledgeBaseId })
   render(<Sidebar open collapsed={false} onClose={vi.fn()} onToggle={vi.fn()} onAdmin={vi.fn()} onNotify={onNotify} />)
   return { onNotify, setKnowledgeBaseId }
@@ -68,6 +68,11 @@ describe('Sidebar navigation', () => {
     await user.click(webSearchButton)
 
     expect(setKnowledgeBaseId).toHaveBeenCalledWith('')
+  })
+  it('hides web search when the collaborator lacks permission', () => {
+    renderSidebar(vi.fn(), 'collaborator', '', false)
+
+    expect(screen.queryByRole('button', { name: 'Pesquisar na Web' })).not.toBeInTheDocument()
   })
 
 

@@ -10,10 +10,10 @@ from app.core.database import get_session_factory
 from app.core.guardrails import evaluate_guardrail
 from app.core.rate_limit import limiter
 from app.core.permissions import can_use_knowledge_base, can_use_web_search
-from app.models import AIModel, Chat, KnowledgeBase, Message, User
+from app.models import AIModel, Chat, KnowledgeBase, Message, MessageImage, User
 from app.schemas import ChatQueryRequest, ChatQueryResponse, MessagePublic, SourceCitation
 from app.services.agno_client import AgnoAnswer, AgnoError, GOOGLE_NOT_CONFIGURED_MESSAGE
-from app.services.image_validation import decode_images
+from app.services.image_validation import decode_images, image_data_url
 from app.services.provider_gateway import ProviderGateway
 from app.services.provider_credentials import ProviderCredentialError, require_provider_api_key
 
@@ -221,6 +221,7 @@ async def persist_authenticated_response(
     answer: AgnoAnswer,
     provider_metadata: dict[str, str],
     resolved_provider: ResolvedProvider | None = None,
+    decoded_images: list[tuple[bytes, str]] | None = None,
 ) -> ChatQueryResponse:
     async with get_session_factory()() as db:
         chat = await db.scalar(select(Chat).where(Chat.id == target_chat_id, Chat.user_id == user_id))
@@ -253,16 +254,23 @@ async def persist_authenticated_response(
         )
         db.add_all([user_message, assistant_message])
         chat.updated_at = now
+        await db.flush()
+        for position, (raw, image_format) in enumerate(decoded_images or []):
+            db.add(MessageImage(message_id=user_message.id, position=position, mime=f'image/{image_format}', content=raw))
         await db.commit()
         await db.refresh(user_message)
         await db.refresh(assistant_message)
+        user_public = MessagePublic.model_validate(user_message)
+        assistant_public = MessagePublic.model_validate(assistant_message)
+        if decoded_images:
+            user_public.image_data = [image_data_url(f'image/{fmt}', raw) for raw, fmt in decoded_images]
         return ChatQueryResponse(
             sessionId=payload.session_id,
             chatId=chat.id,
             title=chat.title,
             answer=answer.text,
             sources=response_sources(answer.sources),
-            messages=[MessagePublic.model_validate(user_message), MessagePublic.model_validate(assistant_message)],
+            messages=[user_public, assistant_public],
             modelId=payload.model_id,
             knowledgeBaseId=resolved_provider.knowledge_base_id if resolved_provider else None,
             model={'name': resolved_provider.model_display_name} if resolved_provider and resolved_provider.model_display_name else None,
@@ -312,6 +320,7 @@ async def query(
             image_metadata,
             answer,
             provider_metadata,
+            decoded_images=list(zip(image_bytes_list, image_formats)),
         )
     history = [message.model_dump() for message in payload.history]
     history = await load_authenticated_history(target_chat_id, user_id)
@@ -344,4 +353,5 @@ async def query(
         answer,
         resolved_provider.metadata,
         resolved_provider,
+        decoded_images=list(zip(image_bytes_list, image_formats)),
     )

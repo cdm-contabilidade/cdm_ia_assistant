@@ -40,7 +40,7 @@ function newSession() { return crypto.randomUUID() }
 function readGuestMessages(): Message[] { try { return normalizeMessages(JSON.parse(sessionStorage.getItem(MESSAGES_KEY) || '[]') as Message[]) } catch { return [] } }
 function saveGuest(sessionId: string, messages: Message[], active: string | null) {
   // Guest history is useful across refreshes, but image bytes must never be persisted.
-  const metadataOnly = normalizeMessages(messages).map(({ imageUrl: _imageUrl, imageUrls: _imageUrls, ...message }) => message)
+  const metadataOnly = normalizeMessages(messages).map(({ imageUrl: _imageUrl, imageUrls: _imageUrls, image_data: _imageData, ...message }) => message)
   sessionStorage.setItem(SESSION_KEY, sessionId)
   sessionStorage.setItem(MESSAGES_KEY, JSON.stringify(metadataOnly))
   sessionStorage.setItem(ACTIVE_KEY, active || '')
@@ -65,7 +65,7 @@ export function normalizeQueryMessages(result: ChatQueryResponse, attachments: I
       ...(message.knowledgeBaseName == null && queryOrigin.knowledgeBaseName != null ? { knowledgeBaseName: queryOrigin.knowledgeBaseName } : {}),
     }
     if (message.role === 'user') {
-      return { ...withOrigin, ...(attachments.length ? { imageUrls: attachments.map((image) => image.dataUrl), has_image: true } : {}) }
+      return { ...withOrigin, ...(attachments.length && withOrigin.imageUrls == null ? { imageUrls: attachments.map((image) => image.dataUrl), has_image: true } : {}) }
     }
     return { ...withOrigin, sources: message.sources?.length ? message.sources : result.sources }
   })

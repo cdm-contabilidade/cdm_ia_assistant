@@ -17,6 +17,7 @@ class UserPublic(BaseModel):
     role: Literal['admin', 'collaborator']
     is_active: bool
     is_blacklisted: bool
+    can_web_search: bool = False
     created_at: datetime
 
 
@@ -42,6 +43,7 @@ class MessagePublic(BaseModel):
     created_at: datetime
     has_image: bool
     image_metadata: dict | None = None
+    image_data: list[str] | None = None
     metadata: dict | None = Field(default=None, validation_alias='provider_metadata', serialization_alias='metadata')
 
 

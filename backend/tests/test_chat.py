@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from app.api.chat import chat_title_from_question
 from app.core.database import get_session_factory
 from app.core.rate_limit import limiter
-from app.models import Chat, KnowledgeBase, Message, User
+from app.models import Chat, KnowledgeBase, Message, MessageImage, User
 from app.services.agno_client import AgnoAnswer, AgnoError, AgnoGeminiClient, SourceCitation
 from app.services.openai_client import OpenAIResponsesClient
 from app.services.provider_gateway import ProviderGateway
@@ -143,6 +143,7 @@ async def test_authenticated_query_uses_database_history_and_persists_image(clie
     headers = {'Authorization': f'Bearer {collaborator_token}'}
     first = await client.post('/api/chat/query', headers=headers, json={'sessionId': session_id, 'chatInput': 'primeira dúvida contábil', 'image': PNG, 'knowledgeBaseId': rag_id, 'modelId': gemini_model_id})
     assert first.status_code == 200
+    assert first.json()['messages'][0]['image_data'] == [PNG]
     second = await client.post('/api/chat/query', headers=headers, json={
         'sessionId': session_id,
         'chatId': session_id,
@@ -154,12 +155,19 @@ async def test_authenticated_query_uses_database_history_and_persists_image(clie
     assert second.status_code == 200
     assert [item['content'] for item in calls[1]['history']] == ['primeira dúvida contábil', 'Resposta persistida']
     assert calls[0]['image_bytes'].startswith(b'\x89PNG')
+    history = await client.get(f'/api/chats/{session_id}/messages', headers=headers)
+    assert history.status_code == 200
+    assert history.json()[0]['image_data'] == [PNG]
     async with get_session_factory()() as db:
         messages = list(await db.scalars(select(Message).order_by(Message.created_at)))
         assert len(messages) == 4
         assert messages[0].has_image is True
         assert messages[0].image_metadata is not None
         assert messages[0].image_metadata['mime'] == 'image/png'
+        images = list(await db.scalars(select(MessageImage)))
+        assert len(images) == 1
+        assert images[0].mime == 'image/png'
+        assert images[0].content.startswith(b'\x89PNG')
 
 
 @pytest.mark.asyncio
@@ -350,6 +358,7 @@ async def test_images_field_accepts_four_images_and_rejects_legacy_conflict(clie
     assert image_metadata['version'] == 2
     assert image_metadata['count'] == 4
     assert len(image_metadata['images']) == 4
+    assert len(response.json()['messages'][0]['image_data']) == 4
     assert 'base64' not in str(image_metadata)
     assert len(captured['image_bytes_list']) == 4
 

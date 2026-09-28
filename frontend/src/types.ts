@@ -1,5 +1,5 @@
 export type UserRole = 'admin' | 'collaborator'
-export type User = { id: string; email: string; name: string; role: UserRole; is_active: boolean; is_blacklisted: boolean; created_at: string }
+export type User = { id: string; email: string; name: string; role: UserRole; is_active: boolean; is_blacklisted: boolean; can_web_search?: boolean; created_at: string }
 export type AdminUser = User
 export type AccessGroup = {
   id: string
@@ -23,12 +23,13 @@ export type MessageMetadata = {
   model_display_name?: string | null
   [key: string]: unknown
 }
-export type Message = { id: string; role: MessageRole; content: string; created_at: string; has_image: boolean; image_metadata?: Record<string, unknown> | null; metadata?: MessageMetadata | null; imageUrls?: string[] | null; imageUrl?: string | null; sources?: SourceCitation[]; modelId?: string | null; knowledgeBaseId?: string | null; modelName?: string | null; knowledgeBaseName?: string | null }
+export type Message = { id: string; role: MessageRole; content: string; created_at: string; has_image: boolean; image_metadata?: Record<string, unknown> | null; image_data?: string[] | null; metadata?: MessageMetadata | null; imageUrls?: string[] | null; imageUrl?: string | null; sources?: SourceCitation[]; modelId?: string | null; knowledgeBaseId?: string | null; modelName?: string | null; knowledgeBaseName?: string | null }
 
 export function normalizeMessage(message: Message): Message {
   const metadata = message.metadata
   return {
     ...message,
+    ...(message.imageUrls == null && message.image_data?.length ? { imageUrls: message.image_data } : {}),
     ...(message.modelId !== undefined || metadata?.model_id !== undefined ? { modelId: message.modelId ?? metadata?.model_id ?? null } : {}),
     ...(message.knowledgeBaseId !== undefined || metadata?.knowledge_base_id !== undefined ? { knowledgeBaseId: message.knowledgeBaseId ?? metadata?.knowledge_base_id ?? null } : {}),
     ...(message.modelName !== undefined || metadata?.model_display_name !== undefined ? { modelName: message.modelName ?? metadata?.model_display_name ?? null } : {}),

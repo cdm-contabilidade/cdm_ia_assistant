@@ -73,3 +73,7 @@ def _decode_single_image(image: str) -> tuple[dict, bytes, str]:
 def validate_image(image: str | None) -> dict | None:
     decoded = decode_image(image)
     return decoded[0] if decoded else None
+
+
+def image_data_url(mime: str, content: bytes) -> str:
+    return f'data:{mime};base64,{base64.b64encode(content).decode("ascii")}'

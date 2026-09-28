@@ -2,11 +2,11 @@ from .chat import Chat
 from .authorization import Group, GroupMembership, GroupResourceGrant, UserPermissionOverride
 from .ai_model import AIModel
 from .knowledge_base import KnowledgeBase
-from .message import Message
+from .message import Message, MessageImage
 from .provider_credential import ProviderCredential
 from .user import User
 
 __all__ = [
-    "AIModel", "Chat", "Group", "GroupMembership", "GroupResourceGrant", "KnowledgeBase", "Message",
+    "AIModel", "Chat", "Group", "GroupMembership", "GroupResourceGrant", "KnowledgeBase", "Message", "MessageImage",
     "ProviderCredential", "User", "UserPermissionOverride",
 ]

@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models import Chat, Message, User
+from app.models import Chat, Message, MessageImage, User
 from app.schemas import ChatRenameRequest, ChatSummary, MessagePublic
+from app.services.image_validation import image_data_url
 
 router = APIRouter(prefix='/api/chats', tags=['chats'])
 
@@ -36,10 +37,25 @@ async def create_chat(user: User = Depends(get_current_user), db: AsyncSession =
 
 
 @router.get('/{chat_id}/messages', response_model=list[MessagePublic])
-async def list_messages(chat_id: UUID, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> list[Message]:
+async def list_messages(chat_id: UUID, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> list[MessagePublic]:
     await owned_chat(chat_id, user, db)
-    result = await db.scalars(select(Message).where(Message.chat_id == chat_id).order_by(Message.created_at.asc()))
-    return list(result)
+    messages = list(await db.scalars(select(Message).where(Message.chat_id == chat_id).order_by(Message.created_at.asc())))
+    if not messages:
+        return []
+    images = await db.scalars(
+        select(MessageImage).where(MessageImage.message_id.in_([m.id for m in messages])).order_by(MessageImage.position)
+    )
+    grouped: dict[UUID, list[MessageImage]] = {}
+    for image in images:
+        grouped.setdefault(image.message_id, []).append(image)
+    public_messages: list[MessagePublic] = []
+    for message in messages:
+        public = MessagePublic.model_validate(message)
+        message_images = grouped.get(message.id)
+        if message_images:
+            public.image_data = [image_data_url(image.mime, image.content) for image in message_images]
+        public_messages.append(public)
+    return public_messages
 
 
 @router.patch('/{chat_id}', response_model=ChatSummary)
