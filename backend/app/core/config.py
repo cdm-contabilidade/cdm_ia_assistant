@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     provider_keys_encryption_key: str | None = None
     openai_timeout_seconds: float = 90
-    access_token_expire_minutes: int = 15
+    access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 7
     google_timeout_seconds: float = 90
     image_max_bytes: int = 5_242_880
