@@ -90,5 +90,5 @@ O build copia `frontend/dist` para `dist` e gera `dist` de assets junto do execu
 - Access token JWT permanece apenas em memória no navegador.
 - Refresh token JWT fica em cookie HttpOnly `cdm_refresh_token`, SameSite Lax e Secure configurável.
 - Visitantes usam apenas `sessionStorage`; o histórico guest nunca é copiado para o banco.
-- Imagens são validadas como PNG/JPEG, limitadas a `IMAGE_MAX_BYTES` e armazenadas somente como metadados.
+- Imagens são validadas como PNG/JPEG, limitadas a `IMAGE_MAX_BYTES` e, em conversas autenticadas, os bytes são persistidos no banco junto dos metadados. Visitantes usam somente `sessionStorage`, sem persistir bytes de imagem.
 - Em produção, use HTTPS, `COOKIE_SECURE=true`, segredo JWT aleatório e origens CORS explícitas.

@@ -30,7 +30,7 @@ export function ImageViewerModal({ images, initialIndex, onClose }: ImageViewerM
   return <div className="fixed inset-0 z-40 flex items-center justify-center bg-navy/70 p-4 dark:bg-black/80" role="presentation" onMouseDown={handleBackdropMouseDown}>
     <section role="dialog" aria-modal="true" aria-label="Visualizador de imagem" className="flex max-h-full max-w-full flex-col items-center gap-3">
       <div className="flex w-full items-center justify-between gap-3">
-        <p aria-live="polite" className="text-sm text-slate-200">{index + 1} de {images.length}</p>
+        {images.length > 1 && <p aria-live="polite" className="text-sm text-slate-200">{index + 1} de {images.length}</p>}
         <button ref={closeRef} type="button" onClick={onClose} aria-label="Fechar visualizador" className="flex h-10 w-10 items-center justify-center rounded-control border border-white/30 text-white transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-blue/50">
           <X size={20} aria-hidden="true" />
         </button>
