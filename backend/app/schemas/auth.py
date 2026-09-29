@@ -1,3 +1,6 @@
+from datetime import datetime
+from uuid import UUID
+
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
@@ -28,6 +31,42 @@ class LoginRequest(BaseModel):
     @classmethod
     def normalize_email(cls, value: str) -> str:
         return value.strip().lower()
+
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8, max_length=200)
+
+    @model_validator(mode='after')
+    def require_new_password(self):
+        if self.current_password == self.new_password:
+            raise ValueError('a nova senha deve ser diferente da senha atual')
+        return self
+
+
+class PasswordResetRequestCreate(BaseModel):
+    email: EmailStr
+
+    @field_validator('email')
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class AdminPasswordResetRequest(BaseModel):
+    password: str = Field(min_length=8, max_length=200)
+
+
+class PasswordResetRequestPublic(BaseModel):
+    id: UUID
+    email: EmailStr
+    name: str
+    created_at: datetime
+
+
+class PasswordResetResponse(BaseModel):
+    message: str
 
 
 class AdminUserUpdate(BaseModel):

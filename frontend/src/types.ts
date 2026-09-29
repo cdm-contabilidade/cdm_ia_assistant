@@ -1,6 +1,7 @@
 export type UserRole = 'admin' | 'collaborator'
 export type User = { id: string; email: string; name: string; role: UserRole; is_active: boolean; is_blacklisted: boolean; can_web_search?: boolean; created_at: string }
 export type AdminUser = User
+export type PasswordResetRequest = { id: string; email: string; name: string; created_at: string }
 export type AccessGroup = {
   id: string
   name: string

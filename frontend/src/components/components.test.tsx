@@ -1,13 +1,18 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { AdminPanel } from './AdminPanel'
 import { AccessManagementPanel } from './AccessManagementPanel'
+import { AdminPanel } from './AdminPanel'
+import { ChangePasswordModal } from './ChangePasswordModal'
 import { InputBox } from './InputBox'
 import { MessageBubble } from './MessageBubble'
 import { ThinkingIndicator } from './ChatArea'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { adminApi, catalogsApi } from '../services/api'
+
+const authMocks = vi.hoisted(() => ({ changePassword: vi.fn() }))
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ changePassword: authMocks.changePassword }) }))
+
 
 describe('chat surface behavior', () => {
   it('renders GFM tables inside a contained scroll region', () => {
@@ -15,6 +20,21 @@ describe('chat surface behavior', () => {
     expect(screen.getByText('status')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Tabela com rolagem horizontal' })).toContainElement(screen.getByRole('table'))
     expect(screen.getByText('Copiar')).toBeInTheDocument()
+  })
+
+  it('changes the authenticated user password from the modal', async () => {
+    const user = userEvent.setup()
+    authMocks.changePassword.mockResolvedValue(undefined)
+    const onClose = vi.fn()
+    render(<ChangePasswordModal onClose={onClose} />)
+
+    await user.type(screen.getByLabelText('Senha atual'), 'old-pass-8')
+    await user.type(screen.getByLabelText('Nova senha'), 'new-pass-8')
+    await user.type(screen.getByLabelText('Confirmar nova senha'), 'new-pass-8')
+    await user.click(screen.getByRole('button', { name: 'Salvar nova senha' }))
+
+    expect(authMocks.changePassword).toHaveBeenCalledWith('old-pass-8', 'new-pass-8')
+    expect(onClose).toHaveBeenCalled()
   })
 
   it('sends on Enter but preserves Shift+Enter', async () => {
@@ -57,7 +77,6 @@ describe('chat surface behavior', () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
     render(<><MessageBubble message={{ id: 'assistant-1', role: 'assistant', content: 'Resposta para copiar', created_at: new Date().toISOString(), has_image: false }} /><MessageBubble message={{ id: 'user-1', role: 'user', content: 'Pergunta', created_at: new Date().toISOString(), has_image: false }} /></>)
-
     await user.click(screen.getByRole('button', { name: 'Copiar resposta' }))
     expect(writeText).toHaveBeenCalledWith('Resposta para copiar')
     expect(screen.getByRole('button', { name: 'Resposta copiada' })).toHaveTextContent('Copiado')
@@ -68,6 +87,21 @@ describe('chat surface behavior', () => {
     vi.spyOn(adminApi, 'users').mockResolvedValue([])
     render(<AdminPanel onClose={vi.fn()} />)
     expect(await screen.findByText('Nenhum colaborador cadastrado.')).toBeInTheDocument()
+    vi.restoreAllMocks()
+  })
+
+  it('lets an admin reset a pending password request', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(adminApi, 'users').mockResolvedValue([])
+    vi.spyOn(adminApi, 'passwordResetRequests').mockResolvedValue([{ id: 'reset-1', email: 'ana@example.com', name: 'Ana', created_at: new Date().toISOString() }])
+    const resetPassword = vi.spyOn(adminApi, 'resetPassword').mockResolvedValue({} as never)
+    render(<AdminPanel onClose={vi.fn()} />)
+
+    await user.click(screen.getByRole('tab', { name: 'Senhas' }))
+    expect(await screen.findByText('ana@example.com')).toBeInTheDocument()
+    await user.type(screen.getByPlaceholderText('Nova senha (mínimo 8 caracteres)'), 'temporary-pass')
+    await user.click(screen.getByRole('button', { name: 'Redefinir senha' }))
+    expect(resetPassword).toHaveBeenCalledWith('reset-1', 'temporary-pass')
     vi.restoreAllMocks()
   })
 

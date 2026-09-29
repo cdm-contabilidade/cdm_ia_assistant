@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.database import Base, get_database_url
 from app.models import (
-    AIModel, Chat, Group, GroupMembership, GroupResourceGrant, KnowledgeBase, Message, MessageImage, ProviderCredential,
+    AIModel, Chat, Group, GroupMembership, GroupResourceGrant, KnowledgeBase, Message, MessageImage, PasswordResetRequest, ProviderCredential,
     User, UserPermissionOverride,
 )
 

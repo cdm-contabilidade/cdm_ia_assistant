@@ -1,9 +1,10 @@
-import { ArrowLeft, BrainCircuit, RefreshCw, ShieldCheck, UserPlus } from 'lucide-react'
+import { ArrowLeft, BrainCircuit, KeyRound, RefreshCw, ShieldCheck, UserPlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { adminApi, getApiError } from '../services/api'
 import type { AdminUser } from '../types'
 import { CatalogPanel } from './CatalogPanel'
 import { AccessManagementPanel } from './AccessManagementPanel'
+import { PasswordResetRequestsPanel } from './PasswordResetRequestsPanel'
 import { ProviderCredentialsPanel } from './ProviderCredentialsPanel'
 
 type AdminPanelProps = { onClose: () => void }
@@ -19,7 +20,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'users' | 'access' | 'ai'>('users')
+  const [tab, setTab] = useState<'users' | 'access' | 'ai' | 'passwords'>('users')
 
   async function loadUsers() {
     setLoading(true)
@@ -64,10 +65,11 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
       {error && <div role="alert" className="mt-5 flex items-center justify-between rounded-control border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200"><span>{error}</span><button type="button" onClick={() => void loadUsers()} className="inline-flex items-center gap-2 font-medium underline"><RefreshCw size={14} />Tentar novamente</button></div>}
 
       <nav aria-label="Seções da administração" className="mt-6 flex overflow-x-auto border-b border-border dark:border-dark-border">
-        {([['users', 'Usuários', UserPlus], ['access', 'Acesso', ShieldCheck], ['ai', 'IA', BrainCircuit]] as const).map(([value, label, Icon]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition ${tab === value ? 'border-blue text-blue' : 'border-transparent text-secondary hover:text-navy dark:text-slate-400 dark:hover:text-slate-100'}`}><Icon size={16} />{label}</button>)}
+        {([['users', 'Usuários', UserPlus], ['access', 'Acesso', ShieldCheck], ['passwords', 'Senhas', KeyRound], ['ai', 'IA', BrainCircuit]] as const).map(([value, label, Icon]) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition ${tab === value ? 'border-blue text-blue' : 'border-transparent text-secondary hover:text-navy dark:text-slate-400 dark:hover:text-slate-100'}`}><Icon size={16} />{label}</button>)}
       </nav>
       {tab === 'ai' && <div className="mt-8 space-y-6"><ProviderCredentialsPanel /><CatalogPanel /></div>}
       {tab === 'access' && <AccessManagementPanel users={users} />}
+      {tab === 'passwords' && <PasswordResetRequestsPanel />}
 
       {tab === 'users' && <div>
       <section className="mt-6 rounded-container border border-border bg-white p-5 shadow-panel dark:border-dark-border dark:bg-dark-surface" aria-labelledby="new-collaborator-title">

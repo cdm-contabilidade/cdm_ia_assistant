@@ -54,3 +54,51 @@ async def test_blacklisted_collaborator_cannot_login_or_use_access_routes(client
     assert blocked_login.status_code == 403
     blocked_chat = await client.post('/api/chat/query', headers={'Authorization': f'Bearer {active_token}'}, json={'sessionId': '00000000-0000-0000-0000-000000000000', 'chatInput': 'não deve enviar'})
     assert blocked_chat.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_user_can_change_password(client, collaborator_token):
+    headers = {'Authorization': f'Bearer {collaborator_token}'}
+    wrong = await client.post('/api/auth/password', headers=headers, json={
+        'current_password': 'wrong-password',
+        'new_password': 'new-collaborator-pass',
+    })
+    assert wrong.status_code == 400
+    changed = await client.post('/api/auth/password', headers=headers, json={
+        'current_password': 'collaborator-pass-8',
+        'new_password': 'new-collaborator-pass',
+    })
+    assert changed.status_code == 200
+    assert changed.json()['access_token']
+    assert (await client.get('/api/auth/me', headers=headers)).status_code == 401
+    new_headers = {'Authorization': f"Bearer {changed.json()['access_token']}"}
+    assert (await client.get('/api/auth/me', headers=new_headers)).status_code == 200
+    assert (await client.post('/api/auth/login', json={'email': 'collaborator@test.example', 'password': 'collaborator-pass-8'})).status_code == 401
+    assert (await client.post('/api/auth/login', json={'email': 'collaborator@test.example', 'password': 'new-collaborator-pass'})).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_password_recovery_notifies_admin_and_admin_resets_password(client, admin_token, collaborator_token):
+    headers = {'Authorization': f'Bearer {admin_token}'}
+    collaborator_headers = {'Authorization': f'Bearer {collaborator_token}'}
+    requested = await client.post('/api/auth/password-reset-requests', json={'email': 'COLLABORATOR@TEST.EXAMPLE'})
+    assert requested.status_code == 202
+    assert 'administrador será notificado' in requested.json()['message']
+    duplicate = await client.post('/api/auth/password-reset-requests', json={'email': 'collaborator@test.example'})
+    assert duplicate.status_code == 202
+    assert (await client.get('/api/admin/password-reset-requests', headers=collaborator_headers)).status_code == 403
+
+    pending = await client.get('/api/admin/password-reset-requests', headers=headers)
+    assert pending.status_code == 200
+    assert len(pending.json()) == 1
+    request_id = pending.json()[0]['id']
+    reset = await client.post(f'/api/admin/password-reset-requests/{request_id}/reset', headers=headers, json={'password': 'reset-collaborator-pass'})
+    assert reset.status_code == 200
+    assert (await client.get('/api/auth/me', headers=collaborator_headers)).status_code == 401
+    assert (await client.post('/api/auth/refresh')).status_code == 401
+    assert (await client.get('/api/admin/password-reset-requests', headers=headers)).json() == []
+    assert (await client.post('/api/auth/login', json={'email': 'collaborator@test.example', 'password': 'reset-collaborator-pass'})).status_code == 200
+
+    unknown = await client.post('/api/auth/password-reset-requests', json={'email': 'unknown@test.example'})
+    assert unknown.status_code == 202
+    assert unknown.json() == requested.json()

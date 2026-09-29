@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import sys
@@ -37,21 +38,32 @@ def build_bundle() -> Path:
     return bundle
 
 
+def discard_bundle(path: Path) -> bool:
+    if not path.exists():
+        return True
+    try:
+        shutil.rmtree(path)
+    except PermissionError:
+        return False
+    return True
+
+
 def replace_previous_bundle(bundle: Path) -> None:
-    if BACKUP.exists():
-        shutil.rmtree(BACKUP)
+    backup = BACKUP
+    if not discard_bundle(backup):
+        backup = ROOT / f'.dist.previous.{os.getpid()}'
     if DIST.exists():
-        DIST.rename(BACKUP)
+        DIST.rename(backup)
     try:
         bundle.rename(DIST)
     except Exception:
         if DIST.exists():
             shutil.rmtree(DIST)
-        if BACKUP.exists():
-            BACKUP.rename(DIST)
+        if backup.exists():
+            backup.rename(DIST)
         raise
-    if BACKUP.exists():
-        shutil.rmtree(BACKUP)
+    if not discard_bundle(backup):
+        print(f'Warning: could not remove locked backup bundle: {backup}', file=sys.stderr)
 
 
 def main() -> None:

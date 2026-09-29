@@ -4,6 +4,7 @@ setlocal
 set "ROOT=%~dp0"
 set "EXECUTABLE=%ROOT%dist\cdm-ai-assistant.exe"
 
+if /I "%~1"=="--build" goto :build
 if /I "%~1"=="--dev" goto :development
 
 set "ENV_FILE=%ROOT%backend\.env"
@@ -22,9 +23,37 @@ if exist "%EXECUTABLE%" (
 
 echo [ERRO] Executavel nao encontrado em:
 echo        %EXECUTABLE%
-echo Execute build_executable.py ou use "iniciar.bat --dev".
+echo Execute "iniciar.bat --build" para gerar o executavel ou use "iniciar.bat --dev".
 pause
 exit /b 1
+
+:build
+set "PYTHON=%ROOT%.venv\Scripts\python.exe"
+
+if not exist "%PYTHON%" (
+    echo [ERRO] Ambiente Python nao encontrado em .venv.
+    echo Crie o ambiente com: py -3.11 -m venv .venv
+    pause
+    exit /b 1
+)
+
+if not exist "%ROOT%build_executable.py" (
+    echo [ERRO] Script build_executable.py nao encontrado.
+    pause
+    exit /b 1
+)
+
+echo [INFO] Gerando frontend e executavel...
+"%PYTHON%" "%ROOT%build_executable.py"
+if errorlevel 1 (
+    echo [ERRO] Falha ao gerar o executavel.
+    pause
+    exit /b 1
+)
+
+echo [OK] Executavel atualizado em:
+echo      %ROOT%dist\cdm-ai-assistant.exe
+exit /b 0
 
 :development
 set "PYTHON=%ROOT%.venv\Scripts\python.exe"

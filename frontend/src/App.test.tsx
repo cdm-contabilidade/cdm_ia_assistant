@@ -6,10 +6,12 @@ import { App } from './App'
 const mocks = vi.hoisted(() => ({
   useAuth: vi.fn(),
   useChat: vi.fn(),
+  requestPasswordReset: vi.fn(),
 }))
 
 vi.mock('./contexts/AuthContext', () => ({ useAuth: mocks.useAuth }))
 vi.mock('./contexts/ChatContext', () => ({ useChat: mocks.useChat }))
+vi.mock('./services/api', () => ({ authApi: { requestPasswordReset: mocks.requestPasswordReset }, getApiError: (error: { message?: string }) => error.message || 'Erro' }))
 
 function renderApp(status: 'loading' | 'guest' | 'authenticated' = 'guest') {
   mocks.useAuth.mockReturnValue({
@@ -57,3 +59,17 @@ describe('application authentication gate', () => {
     expect(window.location.hash).toBe('#reply')
   })
 })
+
+
+  it('submits a forgotten password request with a generic confirmation', async () => {
+    const user = userEvent.setup()
+    mocks.requestPasswordReset.mockResolvedValue({ message: 'Se o email estiver cadastrado, o administrador será notificado.' })
+    renderApp()
+
+    await user.click(screen.getByRole('button', { name: 'Esqueci minha senha' }))
+    await user.type(screen.getByRole('textbox', { name: 'Email' }), 'ana@example.com')
+    await user.click(screen.getByRole('button', { name: 'Solicitar recuperação' }))
+
+    expect(mocks.requestPasswordReset).toHaveBeenCalledWith('ana@example.com')
+    expect(screen.getByRole('status')).toHaveTextContent('administrador será notificado')
+  })

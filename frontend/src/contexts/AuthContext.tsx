@@ -7,6 +7,7 @@ type AuthContextValue = {
   status: AuthStatus
   error: string | null
   login: (email: string, password: string) => Promise<void>
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
   logout: () => Promise<void>
 }
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -49,6 +50,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(() => ({
     user, status, error,
     login: (email, password) => authenticate(() => authApi.login({ email, password })),
+    changePassword: async (currentPassword, newPassword) => {
+      setError(null)
+      try {
+        const result = await authApi.changePassword({ current_password: currentPassword, new_password: newPassword })
+        setAccessToken(result.access_token)
+        setUser(result.user)
+      } catch (cause) { setError(getApiError(cause)); throw cause }
+    },
     logout: async () => { try { await authApi.logout() } finally { setAccessToken(null); setUser(null); setStatus('guest') } },
   }), [user, status, error])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

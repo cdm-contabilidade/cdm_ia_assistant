@@ -38,6 +38,17 @@ describe('Sidebar navigation', () => {
     expect(screen.queryByRole('button', { name: 'Ativar tema escuro' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Administração' })).not.toBeInTheDocument()
   })
+  it('renders the accessible CDM brand mark', () => {
+    renderSidebar()
+
+    expect(screen.getByRole('img', { name: 'CDM Contabilidade' })).toBeInTheDocument()
+  })
+
+  it('exposes the selected knowledge base as pressed', () => {
+    renderSidebar(vi.fn(), 'collaborator', 'rag-1')
+
+    expect(screen.getByRole('button', { name: /Reforma Tributária/ })).toHaveAttribute('aria-pressed', 'true')
+  })
 
   it('shows only the administration action for administrators', () => {
     renderSidebar(vi.fn(), 'admin')

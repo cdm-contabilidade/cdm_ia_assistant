@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator
+from uuid import UUID
 
 import jwt
 from fastapi import Depends, HTTPException, Request
@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import User
 
 from .database import get_db
-from .security import decode_token
+from .security import decode_token_claims, token_predates_password_change
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -22,11 +22,14 @@ async def _user_from_credentials(credentials: HTTPAuthorizationCredentials | Non
     if credentials is None:
         return None
     try:
-        user_id = decode_token(credentials.credentials, 'access')
+        claims = decode_token_claims(credentials.credentials, 'access')
+        user_id = UUID(str(claims['sub']))
     except (jwt.InvalidTokenError, ValueError) as exc:
         raise unauthorized() from exc
     user = await db.scalar(select(User).where(User.id == user_id))
     if user is None:
+        raise unauthorized()
+    if token_predates_password_change(claims, user.password_changed_at):
         raise unauthorized()
     if not user.is_active or user.is_blacklisted:
         raise unavailable()

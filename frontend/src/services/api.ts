@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
-import type { AccessGroup, AdminUser, AiModel, ApiError, ChatQueryResponse, ChatSummary, HistoryMessage, KnowledgeBase, Message, PermissionOverride, ProviderName, ProviderStatus, TokenResponse, User } from '../types'
+import type { AccessGroup, AdminUser, AiModel, ApiError, ChatQueryResponse, ChatSummary, HistoryMessage, KnowledgeBase, Message, PasswordResetRequest, PermissionOverride, ProviderName, ProviderStatus, TokenResponse, User } from '../types'
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || ''
 export const api = axios.create({ baseURL, withCredentials: true, headers: { 'Content-Type': 'application/json' } })
@@ -50,6 +50,8 @@ export const authApi = {
   refresh: () => refreshAccessToken(),
   logout: () => api.post('/api/auth/logout'),
   me: () => api.get<User>('/api/auth/me').then((r) => r.data),
+  changePassword: (payload: { current_password: string; new_password: string }) => api.post<TokenResponse>('/api/auth/password', payload).then((r) => r.data),
+  requestPasswordReset: (email: string) => api.post<{ message: string }>('/api/auth/password-reset-requests', { email }).then((r) => r.data),
 }
 
 export const chatsApi = {
@@ -64,6 +66,8 @@ export const adminApi = {
   users: () => api.get<AdminUser[]>('/api/admin/users').then((r) => r.data),
   createUser: (payload: { email: string; name: string; password: string }) => api.post<AdminUser>('/api/admin/users', payload).then((r) => r.data),
   updateUser: (userId: string, payload: { name?: string; password?: string; is_active?: boolean; is_blacklisted?: boolean }) => api.patch<AdminUser>(`/api/admin/users/${userId}`, payload).then((r) => r.data),
+  passwordResetRequests: () => api.get<PasswordResetRequest[]>('/api/admin/password-reset-requests').then((r) => r.data),
+  resetPassword: (requestId: string, password: string) => api.post(`/api/admin/password-reset-requests/${requestId}/reset`, { password }),
   models: () => api.get<AiModel[]>('/api/admin/models').then((r) => r.data),
   createAiModel: (payload: { provider: string; name: string; model_id: string }) => api.post<AiModel>('/api/admin/ai-models', payload).then((r) => r.data),
   updateAiModel: (id: string, payload: { provider?: string; name?: string; model_id?: string; is_active?: boolean }) => api.patch<AiModel>(`/api/admin/ai-models/${id}`, payload).then((r) => r.data),

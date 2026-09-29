@@ -11,11 +11,11 @@ from app.core.auth import get_current_admin
 from app.core.database import get_db
 from app.core.security import hash_password
 from app.models import (
-    AIModel, Group, GroupMembership, GroupResourceGrant, KnowledgeBase, User, UserPermissionOverride,
+    AIModel, Group, GroupMembership, GroupResourceGrant, KnowledgeBase, PasswordResetRequest, User, UserPermissionOverride,
 )
 from app.schemas import (
-    AIModelCreate, AIModelPublic, AIModelUpdate, AdminUserUpdate, KnowledgeBaseCreate,
-    KnowledgeBasePublic, KnowledgeBaseUpdate, RegisterRequest, UserPublic,
+    AIModelCreate, AIModelPublic, AIModelUpdate, AdminPasswordResetRequest, AdminUserUpdate, KnowledgeBaseCreate,
+    KnowledgeBasePublic, KnowledgeBaseUpdate, PasswordResetRequestPublic, RegisterRequest, UserPublic,
     GroupCreate, GroupGrantsReplace, GroupMembersReplace, GroupPublic, GroupUpdate,
     PermissionOverride, PermissionOverridesReplace, PermissionOverridePublic,
     ProviderKeyStatusPublic, ProviderKeyUpdate,
@@ -88,6 +88,54 @@ async def update_collaborator(
     await db.commit()
     await db.refresh(user)
     return user
+
+@router.get('/password-reset-requests', response_model=list[PasswordResetRequestPublic])
+async def list_password_reset_requests(
+    _: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[PasswordResetRequestPublic]:
+    rows = await db.execute(
+        select(PasswordResetRequest, User)
+        .join(User, User.id == PasswordResetRequest.user_id)
+        .where(PasswordResetRequest.status == 'pending')
+        .order_by(PasswordResetRequest.created_at.asc())
+    )
+    return [
+        PasswordResetRequestPublic(
+            id=request.id,
+            email=user.email,
+            name=user.name,
+            created_at=request.created_at,
+        )
+        for request, user in rows.all()
+    ]
+
+
+@router.post('/password-reset-requests/{request_id}/reset', response_model=PasswordResetRequestPublic)
+async def reset_requested_password(
+    request_id: UUID,
+    payload: AdminPasswordResetRequest,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> PasswordResetRequestPublic:
+    reset_request = await db.scalar(
+        select(PasswordResetRequest).where(
+            PasswordResetRequest.id == request_id,
+            PasswordResetRequest.status == 'pending',
+        )
+    )
+    if reset_request is None:
+        raise HTTPException(status_code=404, detail={'code': 'password_reset_request_not_found', 'message': 'Solicitação de recuperação não encontrada.'})
+    user = await db.get(User, reset_request.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail={'code': 'user_not_found', 'message': 'Usuário não encontrado.'})
+    user.password_hash = hash_password(payload.password)
+    user.password_changed_at = datetime.now(timezone.utc)
+    reset_request.status = 'resolved'
+    reset_request.resolved_at = datetime.now(timezone.utc)
+    reset_request.resolved_by_id = admin.id
+    await db.commit()
+    return PasswordResetRequestPublic(id=reset_request.id, email=user.email, name=user.name, created_at=reset_request.created_at)
 
 
 def missing_group() -> HTTPException:
