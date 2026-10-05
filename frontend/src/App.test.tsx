@@ -11,7 +11,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('./contexts/AuthContext', () => ({ useAuth: mocks.useAuth }))
 vi.mock('./contexts/ChatContext', () => ({ useChat: mocks.useChat }))
+vi.mock('./contexts/ThemeContext', () => ({ useTheme: () => ({ theme: 'light', toggleTheme: vi.fn() }) }))
 vi.mock('./services/api', () => ({ authApi: { requestPasswordReset: mocks.requestPasswordReset }, getApiError: (error: { message?: string }) => error.message || 'Erro' }))
+
 
 function renderApp(status: 'loading' | 'guest' | 'authenticated' = 'guest') {
   mocks.useAuth.mockReturnValue({

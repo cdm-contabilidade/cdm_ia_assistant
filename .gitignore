@@ -10,6 +10,7 @@ frontend/dist/
 frontend/vite.config.js
 frontend/vite.config.d.ts
 dist/
+.dist.previous/
 *.spec
 *.exe
 *.db

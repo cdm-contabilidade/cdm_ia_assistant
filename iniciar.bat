@@ -6,6 +6,18 @@ set "EXECUTABLE=%ROOT%dist\cdm-ai-assistant.exe"
 
 if /I "%~1"=="--build" goto :build
 if /I "%~1"=="--dev" goto :development
+if /I "%~1"=="--help" (
+    echo.
+    echo CDM AI Assistant
+    echo.
+    echo Uso:
+    echo   iniciar.bat             Inicia o executavel publicado
+    echo   iniciar.bat --build     Reconstroi frontend e executavel
+    echo   iniciar.bat --dev       Inicia API e frontend em desenvolvimento
+    echo   iniciar.bat --help      Mostra esta ajuda
+    echo.
+    exit /b 0
+)
 
 set "ENV_FILE=%ROOT%backend\.env"
 
@@ -26,6 +38,7 @@ echo        %EXECUTABLE%
 echo Execute "iniciar.bat --build" para gerar o executavel ou use "iniciar.bat --dev".
 pause
 exit /b 1
+
 
 :build
 set "PYTHON=%ROOT%.venv\Scripts\python.exe"

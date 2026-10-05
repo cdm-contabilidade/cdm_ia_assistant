@@ -39,6 +39,7 @@ components:
   message: {backgroundColor: "{colors.surface}", rounded: "{rounded.container}", padding: 20px}
   control: {rounded: "{rounded.control}", height: 44px}
   primary-button: {backgroundColor: "{colors.brand-blue}", textColor: "{colors.surface}", rounded: "{rounded.control}"}
+  auth-login: {backgroundColor: "{colors.surface}", rounded: "{rounded.container}", padding: 36px}
 ---
 
 # CDM AI Assistant
@@ -55,7 +56,7 @@ Dark mode keeps the navy navigation rail and shifts the reading surface to dark 
 Outfit is used throughout with weights 400, 500, and 650. Body copy stays open and readable. Numeric metadata uses tabular numerals so timestamps and counts align.
 
 ## Layout
-The desktop shell uses a 272px sidebar and a centered reading column capped near 768px. The sidebar becomes a drawer below 768px. Core spacing follows the 4px base scale.
+The desktop shell uses a 272px sidebar and a centered reading column capped near 768px. The sidebar becomes a drawer below 768px. Authentication uses a split brand-and-form layout on wide screens and a single-column form on small screens. Core spacing follows the 4px base scale.
 
 ## Elevation & Depth
 Prefer borders and tonal separation over heavy shadows. Containers use a subtle border and a restrained shadow only where a layer must separate from the canvas.
@@ -65,6 +66,7 @@ Controls use 10px radii. Main containers and message surfaces use 14px. Pills ar
 
 ## Components
 - Sidebar: dark navy, compact navigation, visible active state, keyboard accessible.
+- Authentication: the brand panel explains the assistant in one short message; the form stays focused, spacious, and available in light and dark themes.
 - Primary action: blue fill with white text and a clear focus ring.
 - Input: white surface, border, generous vertical padding, visible disabled state.
 - Message: user messages use a pale wine tint; assistant messages use white and a narrow wine accent.
