@@ -1,5 +1,5 @@
 import { ImagePlus, X } from 'lucide-react'
-import { useRef, useState, type ChangeEvent } from 'react'
+import { forwardRef, useImperativeHandle, useRef, useState, type ChangeEvent } from 'react'
 import type { ImageAttachment } from '../types'
 
 const MAX_ITEMS = 4
@@ -33,15 +33,15 @@ async function readImage(file: File): Promise<ImageAttachment> {
 
 type Props = { value: ImageAttachment[]; onChange: (value: ImageAttachment[]) => void; disabled?: boolean }
 
-export function ImageUploader({ value, onChange, disabled = false }: Props) {
+export type ImageUploaderHandle = { addFiles(files: File[]): Promise<void> }
+
+export const ImageUploader = forwardRef<ImageUploaderHandle, Props>(function ImageUploader({ value, onChange, disabled = false }, ref) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const canAdd = value.length < MAX_ITEMS
 
-  async function onFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files || [])
+  async function processFiles(files: File[]) {
     if (!files.length) return
-    event.target.value = ''
     const room = MAX_ITEMS - value.length
     const selected = files.slice(0, room)
     const messages = files.length > room ? [`Você pode anexar no máximo ${MAX_ITEMS} arquivos.`] : []
@@ -55,6 +55,15 @@ export function ImageUploader({ value, onChange, disabled = false }: Props) {
     if (processed.length && total <= MAX_TOTAL_SIZE) onChange([...value, ...processed])
   }
 
+  useImperativeHandle(ref, () => ({ addFiles: processFiles }), [onChange, value])
+
+  async function onFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || [])
+    if (!files.length) return
+    event.target.value = ''
+    await processFiles(files)
+  }
+
   return <div className="flex min-w-0 flex-wrap items-center gap-1.5">
     <input ref={inputRef} id="chat-image-input" type="file" accept="image/png,image/jpeg" multiple onChange={onFileChange} disabled={disabled || !canAdd} className="sr-only" aria-label="Selecionar arquivos PNG ou JPEG" />
     {value.length > 0 && <div className="flex min-w-0 max-w-full flex-wrap gap-1.5" aria-label={`${value.length} ${value.length === 1 ? 'anexo' : 'anexos'}`}>
@@ -66,4 +75,5 @@ export function ImageUploader({ value, onChange, disabled = false }: Props) {
     {canAdd && <label htmlFor="chat-image-input" className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-control px-2 text-xs font-medium text-secondary transition hover:bg-slate-100 focus-within:ring-2 focus-within:ring-blue/40 dark:text-slate-300 dark:hover:bg-white/10 ${disabled ? 'pointer-events-none opacity-50' : ''}`}><ImagePlus size={16} aria-hidden="true" />{value.length ? 'Adicionar' : 'Anexar arquivos'}</label>}
     {error && <span role="alert" className="basis-full text-[11px] text-red-700 dark:text-red-300">{error}</span>}
   </div>
-}
+})
+

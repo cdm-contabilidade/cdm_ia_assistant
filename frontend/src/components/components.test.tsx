@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { AccessManagementPanel } from './AccessManagementPanel'
@@ -46,6 +46,58 @@ describe('chat surface behavior', () => {
     expect(onSend).not.toHaveBeenCalled()
     await user.keyboard('{Enter}')
     expect(onSend).toHaveBeenCalledWith('linha 1\nlinha 2', null)
+  })
+
+  it('adds a pasted PNG as a preview without sending it', async () => {
+    vi.stubGlobal('FileReader', class {
+      result: string | null = null
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+
+      readAsDataURL() {
+        this.result = 'data:image/png;base64,AAAA'
+        this.onload?.()
+      }
+    })
+    vi.stubGlobal('Image', class {
+      width = 640
+      height = 480
+      onload: (() => void) | null = null
+      onerror: (() => void) | null = null
+
+      set src(_value: string) {
+        this.onload?.()
+      }
+    })
+    const drawImage = vi.fn()
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D)
+    const onSend = vi.fn().mockResolvedValue(undefined)
+    const file = new File(['png'], 'captura.png', { type: 'image/png' })
+    render(<InputBox disabled={false} onSend={onSend} aiModels={[{ id: 'openai-1', provider: 'openai', name: 'OpenAI' }]} modelId="openai-1" />)
+    const input = screen.getByLabelText('Mensagem')
+
+    try {
+      fireEvent.paste(input, { clipboardData: { items: [{ kind: 'file', getAsFile: () => file }] } })
+
+      expect(await screen.findByRole('img', { name: 'Prévia 1: captura.png' })).toBeInTheDocument()
+      expect(screen.getByLabelText('1 anexo')).toBeInTheDocument()
+      expect(input).toHaveValue('')
+      expect(onSend).not.toHaveBeenCalled()
+    } finally {
+      getContext.mockRestore()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('keeps plain text paste native in the composer', async () => {
+    const user = userEvent.setup()
+    render(<InputBox disabled={false} onSend={vi.fn().mockResolvedValue(undefined)} />)
+    const input = screen.getByLabelText('Mensagem')
+
+    await user.click(input)
+    await user.paste('texto colado')
+
+    expect(input).toHaveValue('texto colado')
   })
   it('keeps an active Gemini model editable when a sidebar RAG is active', () => {
     render(<InputBox disabled={false} onSend={vi.fn().mockResolvedValue(undefined)} aiModels={[{ id: 'gemini-1', provider: 'gemini', name: 'Gemini' }]} modelId="gemini-1" knowledgeBaseId="rag-1" />)

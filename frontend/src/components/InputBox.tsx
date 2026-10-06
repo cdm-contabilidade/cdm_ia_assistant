@@ -1,13 +1,14 @@
 import { Send } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { AiModel, ImageAttachment, KnowledgeBase } from '../types'
-import { ImageUploader } from './ImageUploader'
+import { ImageUploader, type ImageUploaderHandle } from './ImageUploader'
 
 type Props = { disabled: boolean; catalogsLoading?: boolean; onSend: (text: string, images: ImageAttachment[] | null) => Promise<void>; aiModels?: AiModel[]; modelId?: string; knowledgeBaseId?: string; onModelChange?: (id: string) => void }
 
 export function InputBox({ disabled, catalogsLoading = false, onSend, aiModels = [], modelId = '', knowledgeBaseId = '', onModelChange = () => {} }: Props) {
   const [text, setText] = useState('')
   const [images, setImages] = useState<ImageAttachment[]>([])
+  const imageUploaderRef = useRef<ImageUploaderHandle>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const selectableModels = aiModels.filter((item) => item.provider.toLowerCase() === (knowledgeBaseId ? 'gemini' : 'openai'))
   const modelUnavailable = !catalogsLoading && (!selectableModels.length || !modelId)
@@ -28,18 +29,28 @@ export function InputBox({ disabled, catalogsLoading = false, onSend, aiModels =
     try { await onSend(currentText, currentImages.length ? currentImages : null) } catch { setText(currentText); setImages(currentImages) }
   }
 
+  function onPaste(event: React.ClipboardEvent<HTMLDivElement>) {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === 'file')
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null)
+    if (!files.length) return
+    event.preventDefault()
+    void imageUploaderRef.current?.addFiles(files)
+  }
+
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() }
   }
 
   return (
-    <div className="rounded-container border border-border/90 bg-white/95 p-2.5 shadow-panel transition focus-within:border-blue/60 dark:border-dark-border dark:bg-dark-surface/95 sm:p-3">
+    <div onPaste={onPaste} className="rounded-container border border-border/90 bg-white/95 p-2.5 shadow-panel transition focus-within:border-blue/60 dark:border-dark-border dark:bg-dark-surface/95 sm:p-3">
       <div className="grid min-w-0 gap-2.5 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] md:gap-3">
         <textarea ref={textareaRef} value={text} onChange={(event) => setText(event.target.value)} onKeyDown={onKeyDown} disabled={disabled} rows={2} maxLength={10000} placeholder="Digite sua dúvida contábil..." aria-label="Mensagem" className="max-h-28 min-h-20 w-full resize-none border-0 bg-transparent px-1 py-1 text-[15px] leading-6 text-charcoal placeholder:text-secondary/70 focus:outline-none dark:text-slate-100 dark:placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60 md:min-h-24" />
 
         <div className="flex min-w-0 flex-col gap-1.5 border-t border-border/70 pt-2.5 dark:border-dark-border/70 md:border-l md:border-t-0 md:pl-3 md:pt-0">
           <div className="min-w-0">
-            <ImageUploader value={images} onChange={setImages} disabled={disabled} />
+            <ImageUploader ref={imageUploaderRef} value={images} onChange={setImages} disabled={disabled} />
           </div>
           <div className="min-w-0">
           <label className="block min-w-0 text-[11px] font-medium text-secondary dark:text-slate-400">
